@@ -1,0 +1,72 @@
+---
+title: "Răng Hàm Mặt - Knowledge Base"
+subtitle: "Cơ sở tri thức Nha khoa dành cho sinh viên và bác sĩ thực hành"
+---
+
+## Chào mừng đến với Cơ sở Tri thức Răng Hàm Mặt
+
+Đây là hệ thống tài liệu học tập chuyên ngành **Răng Hàm Mặt (Nha khoa)**, được biên soạn có cấu trúc theo ba cấp độ khó tăng dần. Toàn bộ nội dung được thiết kế để đồng hành cùng **trợ lý AI (chatbot)**, giúp bạn học theo phương pháp gợi mở (Socratic) thay vì học thuộc lòng.
+
+Cơ sở tri thức hiện bao gồm các chủ đề cốt lõi:
+
+- **Phục Hình Cố Định** (Fixed Prosthodontics) — cầu chiếc, pontic, abutment, Ante's Law
+- **Nha Khoa Implant** (Implant Dentistry) — osseointegration, chỉ định, biến chứng
+- **Nha Chu** (Periodontology) — periodontium, phân loại Miller, tiên lượng
+- **Quy Hoạch Điều Trị** (Treatment Planning) — chẩn đoán, phân tầng rủi ro toàn thân
+
+---
+
+## Lộ trình học tập
+
+Tài liệu được tổ chức theo ba tầng (tier), nên học tuần tự từ thấp lên cao:
+
+```{mermaid}
+graph LR
+    A[Foundation<br/>Nền tảng] --> B[Intermediate<br/>Lâm sàng]
+    B --> C[Advanced<br/>Nâng cao]
+```
+
+| Tầng | Mục tiêu | Đối tượng |
+|------|----------|-----------|
+| [🟢 **Foundation** — Cơ bản](foundation/index.qmd) | Định nghĩa, khái niệm, nguyên lý nền tảng | Sinh viên năm đầu, người mới bắt đầu |
+| [🟡 **Intermediate** — Lâm sàng](intermediate/index.qmd) | Tiêu chí lâm sàng, thiết kế, cây quyết định | Sinh viên lâm sàng, bác sĩ mới |
+| [🔴 **Advanced** — Nâng cao](advanced/index.qmd) | Biến chứng, phẫu thuật, y văn tham chiếu | Bác sĩ thực hành, học viên sau đại học |
+
+> **Gợi ý:** Mỗi tài liệu Advanced yêu cầu bạn đã nắm vững phần Foundation (và Intermediate) tương ứng của cùng chủ đề. Hãy kiểm tra mục `prerequisites` (điều kiện tiên quyết) ở đầu mỗi tài liệu.
+
+---
+
+## Cách sử dụng cùng trợ lý AI (Chatbot)
+
+Cơ sở tri thức này là nguồn tham chiếu (RAG) cho trợ lý AI học tập:
+
+1. **Đọc tài liệu** ở tầng phù hợp với trình độ hiện tại của bạn.
+2. **Đặt câu hỏi cho chatbot** về một tình huống lâm sàng hoặc khái niệm chưa rõ.
+3. Trợ lý sẽ **gợi mở bằng câu hỏi** (Socratic) để bạn tự suy luận, thay vì đưa đáp án ngay.
+4. Sau khi bạn trình bày, trợ lý **bổ sung, đính chính nhẹ nhàng** và tóm tắt lý do lâm sàng.
+5. Các câu trả lời của trợ lý được **trích dẫn (cited)** từ chính các tài liệu trong cơ sở tri thức này.
+
+> ⚠️ Nội dung mang tính giáo dục, **không thay thế** chẩn đoán hoặc chỉ định điều trị của bác sĩ.
+
+---
+
+## Truy cập nhanh
+
+::: {.grid}
+
+::: {.g-col-12 .g-col-md-4}
+### 🟢 [Foundation](foundation/index.qmd)
+Kiến thức nền tảng, khái niệm và định nghĩa cốt lõi.
+:::
+
+::: {.g-col-12 .g-col-md-4}
+### 🟡 [Intermediate](intermediate/index.qmd)
+Ứng dụng lâm sàng, tiêu chí và quy trình ra quyết định.
+:::
+
+::: {.g-col-12 .g-col-md-4}
+### 🔴 [Advanced](advanced/index.qmd)
+Biến chứng, kỹ thuật chuyên sâu và tham chiếu y văn.
+:::
+
+:::

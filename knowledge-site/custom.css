@@ -1,0 +1,115 @@
+/* ==========================================================================
+   Răng Hàm Mặt - Knowledge Base | Custom theme
+   Medical / dental palette (blue / teal), Vietnamese-friendly typography
+   ========================================================================== */
+
+:root {
+  --rhm-primary: #0d6e8c;      /* teal-blue */
+  --rhm-primary-dark: #0a5468;
+  --rhm-accent: #14a3a3;       /* teal */
+  --rhm-bg-soft: #f4f9fb;
+  --rhm-text: #1f2d33;
+
+  --rhm-foundation: #2e9e5b;   /* green  */
+  --rhm-intermediate: #d9a300; /* yellow */
+  --rhm-advanced: #d1493c;     /* red    */
+}
+
+/* ---- Vietnamese-friendly system font stack ---------------------------- */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", "Noto Sans", "Arial", sans-serif;
+  color: var(--rhm-text);
+  line-height: 1.7;
+  font-size: 1.02rem;
+}
+
+/* ---- Headings & dental terminology ------------------------------------ */
+h1, h2, h3, h4 {
+  font-weight: 700;
+  color: var(--rhm-primary-dark);
+  letter-spacing: -0.01em;
+}
+
+h1 { border-bottom: 3px solid var(--rhm-accent); padding-bottom: .3rem; }
+h2 { margin-top: 2rem; }
+
+/* Latin / English dental terms rendered inline in code style stay legible */
+code:not(pre code) {
+  background: var(--rhm-bg-soft);
+  color: var(--rhm-primary-dark);
+  padding: .1em .35em;
+  border-radius: 4px;
+  font-size: .92em;
+}
+
+/* ---- Links & navbar --------------------------------------------------- */
+a { color: var(--rhm-primary); }
+a:hover { color: var(--rhm-accent); }
+
+.navbar {
+  background-color: var(--rhm-primary-dark) !important;
+}
+.navbar .navbar-brand,
+.navbar .nav-link {
+  color: #eafcff !important;
+}
+.navbar .nav-link:hover { color: #ffffff !important; }
+
+/* ---- Tables ----------------------------------------------------------- */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+table th {
+  background: var(--rhm-bg-soft);
+  color: var(--rhm-primary-dark);
+}
+table th, table td {
+  border: 1px solid #d9e6ea;
+  padding: .55rem .75rem;
+}
+
+/* ---- Blockquotes (clinical tips / warnings) --------------------------- */
+blockquote {
+  border-left: 4px solid var(--rhm-accent);
+  background: var(--rhm-bg-soft);
+  padding: .6rem 1rem;
+  color: var(--rhm-text);
+}
+
+/* ==========================================================================
+   Difficulty badges
+   ========================================================================== */
+.badge-difficulty {
+  display: inline-block;
+  padding: .18em .7em;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 700;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  vertical-align: middle;
+}
+.badge-foundation   { background-color: var(--rhm-foundation); }
+.badge-intermediate { background-color: var(--rhm-intermediate); color: #3a2d00; }
+.badge-advanced     { background-color: var(--rhm-advanced); }
+
+/* Small meta line under a doc entry */
+.doc-meta {
+  font-size: .85rem;
+  color: #607078;
+  margin: .1rem 0 .6rem 0;
+}
+
+/* Card-like list of documents */
+.doc-card {
+  border: 1px solid #dbe8ec;
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1rem;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(13, 110, 140, 0.06);
+}
+.doc-card h3 { margin-top: 0; }

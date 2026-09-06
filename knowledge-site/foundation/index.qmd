@@ -1,0 +1,50 @@
+---
+title: "Foundation — Kiến thức nền tảng"
+subtitle: "Định nghĩa, khái niệm và nguyên lý cốt lõi của Răng Hàm Mặt"
+---
+
+<span class="badge-difficulty badge-foundation">Foundation</span>
+
+Đây là tầng nền tảng, phù hợp cho **sinh viên năm đầu** và người mới bắt đầu. Không yêu cầu điều kiện tiên quyết. Sau khi nắm vững tầng này, hãy chuyển sang [Intermediate](../intermediate/index.qmd).
+
+---
+
+::: {.doc-card}
+### [Phục Hình Cố Định - Cơ Bản](../../data/knowledge/Foundation/prosthodontics_basics.md)
+<p class="doc-meta">🦷 Chủ đề: Fixed Prosthodontics · ⏱️ ~30 phút · Điều kiện tiên quyết: không</p>
+
+Cấu trúc cơ bản của cầu chiếc (FPD): pontic, abutment, retainer, connector. Phân loại cầu theo số đơn vị và cách áp dụng **Luật Ante (Ante's Law)**.
+
+*Từ khóa:* `bridge`, `pontic`, `abutment`, `retainer`, `connector`, `Ante's Law`, `FPD`
+:::
+
+::: {.doc-card}
+### [Nha Khoa Implant - Cơ Bản](../../data/knowledge/Foundation/implant_basics.md)
+<p class="doc-meta">🦷 Chủ đề: Implant Dentistry · ⏱️ ~25 phút · Điều kiện tiên quyết: không</p>
+
+Định nghĩa implant nha khoa và vật liệu (titanium), khái niệm **osseointegration (tích hợp xương)** và các chỉ định (indication) chính của implant.
+
+*Từ khóa:* `dental implant`, `osseointegration`, `titanium`, `indication`
+:::
+
+::: {.doc-card}
+### [Nha Chu - Cơ Bản](../../data/knowledge/Foundation/perio_basics.md)
+<p class="doc-meta">🦷 Chủ đề: Periodontology · ⏱️ ~25 phút · Điều kiện tiên quyết: không</p>
+
+Định nghĩa bệnh nha chu và mô đỡ của răng; 4 thành phần của **periodontium**; phân loại tính động răng theo **Miller (M0–M3)**.
+
+*Từ khóa:* `periodontitis`, `periodontium`, `gingiva`, `tooth mobility`, `Miller classification`
+:::
+
+::: {.doc-card}
+### [Quy Hoạch Điều Trị - Cơ Bản](../../data/knowledge/Foundation/treatment_planning_basics.md)
+<p class="doc-meta">🦷 Chủ đề: Treatment Planning · ⏱️ ~30 phút · Điều kiện tiên quyết: không</p>
+
+7 bước quy hoạch điều trị nha khoa, mục đích của quy hoạch điều trị, và đánh giá rủi ro toàn thân cơ bản (tim mạch, tiểu đường, HIV, hút thuốc, tâm thần).
+
+*Từ khóa:* `treatment planning`, `diagnosis`, `risk assessment`, `systemic risk`, `HbA1c`, `CD4`
+:::
+
+---
+
+➡️ **Bước tiếp theo:** [Intermediate — Ứng dụng lâm sàng](../intermediate/index.qmd)

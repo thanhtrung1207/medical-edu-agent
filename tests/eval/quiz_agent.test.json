@@ -1,0 +1,11 @@
+{
+  "agent_name": "quiz_master",
+  "eval_cases": [
+    {
+      "input": "Tạo 1 câu hỏi trắc nghiệm về sinh lý tim, mức độ dễ",
+      "expected_response_format": "json",
+      "expected_fields": ["stem", "options", "correct_answer", "explanation"],
+      "tags": ["quiz", "cardiology", "easy"]
+    }
+  ]
+}

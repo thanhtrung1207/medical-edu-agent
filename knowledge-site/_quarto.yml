@@ -1,0 +1,35 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "Răng Hàm Mặt - Knowledge Base"
+  navbar:
+    left:
+      - text: "Trang chủ"
+        href: index.qmd
+      - text: "Foundation"
+        href: foundation/index.qmd
+      - text: "Intermediate"
+        href: intermediate/index.qmd
+      - text: "Advanced"
+        href: advanced/index.qmd
+  sidebar:
+    style: floating
+    contents:
+      - section: "Foundation"
+        contents:
+          - foundation/index.qmd
+      - section: "Intermediate"
+        contents:
+          - intermediate/index.qmd
+      - section: "Advanced"
+        contents:
+          - advanced/index.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    css: custom.css

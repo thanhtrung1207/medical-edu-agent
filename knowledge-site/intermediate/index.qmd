@@ -1,0 +1,47 @@
+---
+title: "Intermediate — Ứng dụng lâm sàng"
+subtitle: "Tiêu chí lâm sàng, thiết kế và quy trình ra quyết định"
+---
+
+<span class="badge-difficulty badge-intermediate">Intermediate</span>
+
+Đây là tầng lâm sàng, dành cho **sinh viên lâm sàng** và **bác sĩ mới**. Mỗi tài liệu yêu cầu bạn đã hoàn thành phần Foundation tương ứng của cùng chủ đề.
+
+::: {.callout-note}
+## 🚧 Nội dung đang được biên soạn
+Các tài liệu Intermediate dưới đây đã được lên kế hoạch trong lộ trình học tập nhưng **chưa xuất bản**. Trong thời gian chờ, bạn có thể ôn lại phần [Foundation](../foundation/index.qmd) và trao đổi với trợ lý AI về các tình huống lâm sàng.
+:::
+
+---
+
+::: {.doc-card}
+### Phục Hình Cố Định - Lâm Sàng *(sắp ra mắt)*
+<p class="doc-meta">🦷 Chủ đề: Fixed Prosthodontics · ⏱️ ~45 phút · Điều kiện tiên quyết: Foundation (Phục hình cố định + Nha chu)</p>
+
+Tiêu chí lâm sàng, thiết kế cầu chiếc và tỉ lệ chân răng - thân răng (CRR).
+:::
+
+::: {.doc-card}
+### Nha Khoa Implant - Lâm Sàng *(sắp ra mắt)*
+<p class="doc-meta">🦷 Chủ đề: Implant Dentistry · ⏱️ ~50 phút · Điều kiện tiên quyết: Foundation (Implant)</p>
+
+Chống chỉ định, đánh giá chất lượng xương, lập kế hoạch và phân loại theo **ITI**.
+:::
+
+::: {.doc-card}
+### Nha Chu - Lâm Sàng *(sắp ra mắt)*
+<p class="doc-meta">🦷 Chủ đề: Periodontology · ⏱️ ~45 phút · Điều kiện tiên quyết: Foundation (Nha chu)</p>
+
+Tổn thương chẽ chân (furcation), mất xương, tiên lượng và đánh giá lâm sàng.
+:::
+
+::: {.doc-card}
+### Quy Hoạch Điều Trị - Lâm Sàng *(sắp ra mắt)*
+<p class="doc-meta">🦷 Chủ đề: Treatment Planning · ⏱️ ~50 phút · Điều kiện tiên quyết: Foundation (Quy hoạch điều trị)</p>
+
+Cây quyết định, phân tầng rủi ro, tình huống cụ thể và thứ tự điều trị.
+:::
+
+---
+
+⬅️ **Ôn lại:** [Foundation — Nền tảng](../foundation/index.qmd) · ➡️ **Nâng cao:** [Advanced](../advanced/index.qmd)

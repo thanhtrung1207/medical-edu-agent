@@ -1,0 +1,20 @@
+{
+  "agent_name": "medical_educator",
+  "eval_cases": [
+    {
+      "input": "Huyết áp bình thường là bao nhiêu?",
+      "expected_routing": "qa_expert",
+      "tags": ["routing", "qa"]
+    },
+    {
+      "input": "Cho tôi 5 câu trắc nghiệm về giải phẫu",
+      "expected_routing": "quiz_master",
+      "tags": ["routing", "quiz"]
+    },
+    {
+      "input": "Phân tích ca lâm sàng: BN nam 55 tuổi, đau ngực 2 giờ",
+      "expected_routing": "case_analyst",
+      "tags": ["routing", "case"]
+    }
+  ]
+}

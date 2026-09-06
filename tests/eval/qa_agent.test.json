@@ -1,0 +1,29 @@
+{
+  "agent_name": "qa_expert",
+  "eval_cases": [
+    {
+      "input": "Triệu chứng chính của nhồi máu cơ tim cấp là gì?",
+      "expected_tool_calls": ["search_medical_knowledge"],
+      "expected_response_contains": ["đau ngực", "lan vai", "khó thở"],
+      "tags": ["cardiology", "emergency", "easy"]
+    },
+    {
+      "input": "Cơ chế tác dụng của Metformin?",
+      "expected_tool_calls": ["lookup_drug_info"],
+      "expected_response_contains": ["insulin", "glucose", "gan"],
+      "tags": ["pharmacology", "endocrine", "medium"]
+    },
+    {
+      "input": "Mô tả giải phẫu của đám rối cánh tay (brachial plexus)?",
+      "expected_tool_calls": ["search_anatomy"],
+      "expected_response_contains": ["C5", "C6", "C7", "C8", "T1"],
+      "tags": ["anatomy", "upper_limb", "hard"]
+    }
+  ]
+}
+{
+  "eval_set_id": "qa_agent_eval",
+  "name": "Q&A Agent Evaluation Set",
+  "description": "Placeholder ADK evaluation set for the Q&A Expert agent. Test cases will be added later.",
+  "eval_cases": []
+}

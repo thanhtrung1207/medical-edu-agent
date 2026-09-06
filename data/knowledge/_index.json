@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "description": "Registry of tiered dental knowledge documents (Foundation/Intermediate/Advanced). Original flat files are kept as backup and are NOT listed here; the tiered files below are the authoritative source.",
+  "difficulties": ["foundation", "intermediate", "advanced"],
+  "documents": [
+    {
+      "id": "fp_foundation",
+      "file": "Foundation/prosthodontics_basics.md",
+      "difficulty": "foundation",
+      "topic": "fixed_prosthodontics",
+      "title": "Phục Hình Cố Định - Cơ Bản",
+      "estimated_minutes": 30,
+      "prerequisites": []
+    },
+    {
+      "id": "implant_foundation",
+      "file": "Foundation/implant_basics.md",
+      "difficulty": "foundation",
+      "topic": "implant_dentistry",
+      "title": "Nha Khoa Implant - Cơ Bản",
+      "estimated_minutes": 25,
+      "prerequisites": []
+    },
+    {
+      "id": "perio_foundation",
+      "file": "Foundation/perio_basics.md",
+      "difficulty": "foundation",
+      "topic": "periodontology",
+      "title": "Nha Chu - Cơ Bản",
+      "estimated_minutes": 25,
+      "prerequisites": []
+    },
+    {
+      "id": "tp_foundation",
+      "file": "Foundation/treatment_planning_basics.md",
+      "difficulty": "foundation",
+      "topic": "treatment_planning",
+      "title": "Quy Hoạch Điều Trị - Cơ Bản",
+      "estimated_minutes": 30,
+      "prerequisites": []
+    },
+    {
+      "id": "tooth_fracture_foundation",
+      "file": "Foundation/tooth_fracture_basics.md",
+      "difficulty": "foundation",
+      "topic": "tooth_fracture",
+      "title": "Răng Vỡ - Cơ Bản",
+      "estimated_minutes": 25,
+      "prerequisites": []
+    },
+    {
+      "id": "single_tooth_loss_foundation",
+      "file": "Foundation/single_tooth_loss_basics.md",
+      "difficulty": "foundation",
+      "topic": "single_tooth_loss",
+      "title": "Mất Răng Đơn Lẻ - Cơ Bản",
+      "estimated_minutes": 30,
+      "prerequisites": ["Foundation/prosthodontics_basics.md"]
+    },
+    {
+      "id": "fp_intermediate",
+      "file": "Intermediate/prosthodontics_clinical.md",
+      "difficulty": "intermediate",
+      "topic": "fixed_prosthodontics",
+      "title": "Phục Hình Cố Định - Lâm Sàng",
+      "estimated_minutes": 45,
+      "prerequisites": ["Foundation/prosthodontics_basics.md", "Foundation/perio_basics.md"]
+    },
+    {
+      "id": "implant_intermediate",
+      "file": "Intermediate/implant_clinical.md",
+      "difficulty": "intermediate",
+      "topic": "implant_dentistry",
+      "title": "Nha Khoa Implant - Lâm Sàng",
+      "estimated_minutes": 50,
+      "prerequisites": ["Foundation/implant_basics.md"]
+    },
+    {
+      "id": "perio_intermediate",
+      "file": "Intermediate/perio_clinical.md",
+      "difficulty": "intermediate",
+      "topic": "periodontology",
+      "title": "Nha Chu - Lâm Sàng",
+      "estimated_minutes": 45,
+      "prerequisites": ["Foundation/perio_basics.md"]
+    },
+    {
+      "id": "tp_intermediate",
+      "file": "Intermediate/treatment_planning_clinical.md",
+      "difficulty": "intermediate",
+      "topic": "treatment_planning",
+      "title": "Quy Hoạch Điều Trị - Lâm Sàng",
+      "estimated_minutes": 50,
+      "prerequisites": ["Foundation/treatment_planning_basics.md"]
+    },
+    {
+      "id": "fp_advanced",
+      "file": "Advanced/prosthodontics_advanced.md",
+      "difficulty": "advanced",
+      "topic": "fixed_prosthodontics",
+      "title": "Phục Hình Cố Định - Nâng Cao",
+      "estimated_minutes": 30,
+      "prerequisites": ["Foundation/prosthodontics_basics.md", "Intermediate/prosthodontics_clinical.md"]
+    },
+    {
+      "id": "implant_advanced",
+      "file": "Advanced/implant_advanced.md",
+      "difficulty": "advanced",
+      "topic": "implant_dentistry",
+      "title": "Nha Khoa Implant - Nâng Cao",
+      "estimated_minutes": 45,
+      "prerequisites": ["Foundation/implant_basics.md", "Intermediate/implant_clinical.md"]
+    }
+  ]
+}

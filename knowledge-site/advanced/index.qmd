@@ -1,0 +1,32 @@
+---
+title: "Advanced — Kiến thức nâng cao"
+subtitle: "Biến chứng, kỹ thuật chuyên sâu và tham chiếu y văn"
+---
+
+<span class="badge-difficulty badge-advanced">Advanced</span>
+
+Đây là tầng nâng cao, dành cho **bác sĩ thực hành** và **học viên sau đại học**. Mỗi tài liệu yêu cầu bạn đã hoàn thành phần Foundation và Intermediate tương ứng của cùng chủ đề.
+
+---
+
+::: {.doc-card}
+### [Phục Hình Cố Định - Nâng Cao](../../data/knowledge/Advanced/prosthodontics_advanced.md)
+<p class="doc-meta">🦷 Chủ đề: Fixed Prosthodontics · ⏱️ ~30 phút · Điều kiện tiên quyết: Foundation + Intermediate (Phục hình cố định)</p>
+
+Nhận diện và xử lý biến chứng sớm/muộn của cầu chiếc; đánh giá tiêu chí thành công theo mốc thời gian; tham chiếu y văn kinh điển và hiện đại.
+
+*Từ khóa:* `complications`, `decementiation`, `secondary caries`, `fracture`, `abutment failure`, `success rate`, `references`
+:::
+
+::: {.doc-card}
+### [Nha Khoa Implant - Nâng Cao](../../data/knowledge/Advanced/implant_advanced.md)
+<p class="doc-meta">🦷 Chủ đề: Implant Dentistry · ⏱️ ~45 phút · Điều kiện tiên quyết: Foundation + Intermediate (Implant)</p>
+
+Nhận diện và quản lý biến chứng ngắn hạn/dài hạn (**periimplantitis**); timeline **osseointegration** và giao thức tải (loading protocol); quy trình phẫu thuật cấy implant và giao thức khoan (drilling protocol); kế hoạch vệ sinh và bảo trì implant.
+
+*Từ khóa:* `periimplantitis`, `osseointegration timeline`, `loading protocol`, `drilling protocol`, `surgical guide`, `maintenance`, `references`
+:::
+
+---
+
+⬅️ **Ôn lại:** [Intermediate — Ứng dụng lâm sàng](../intermediate/index.qmd) · [Foundation — Nền tảng](../foundation/index.qmd)
