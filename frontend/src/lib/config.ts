@@ -28,5 +28,4 @@ export const config = {
 } as const;
 
 /** Whether the app should call the real backend or use mock data. */
-export const USE_MOCK_API =
-  process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
+export const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API === "true";

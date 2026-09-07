@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "description": "Registry of tiered dental knowledge documents (Foundation/Intermediate/Advanced). Original flat files are kept as backup and are NOT listed here; the tiered files below are the authoritative source.",
   "difficulties": ["foundation", "intermediate", "advanced"],
   "documents": [
@@ -47,6 +47,15 @@
       "title": "Răng Vỡ - Cơ Bản",
       "estimated_minutes": 25,
       "prerequisites": []
+    },
+    {
+      "id": "endodontic_restoration_ferrule_posts",
+      "file": "Intermediate/endodontic_restoration_ferrule_posts.md",
+      "difficulty": "intermediate",
+      "topic": "tooth_fracture",
+      "title": "Phục Hồi Răng Đã Điều Trị Nội Nha: Ferrule và Trụ Cốt",
+      "estimated_minutes": 35,
+      "prerequisites": ["Foundation/tooth_fracture_basics.md"]
     },
     {
       "id": "single_tooth_loss_foundation",

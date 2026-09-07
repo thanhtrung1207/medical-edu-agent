@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CalendarClock, Loader2, Sparkles, TrendingUp } from "lucide-react";
 import { QuizCard } from "@/components/quiz/QuizCard";
 import { ScoreBoard } from "@/components/quiz/ScoreBoard";
 import { QuizTimer } from "@/components/quiz/QuizTimer";
 import { generateQuiz, submitQuizAnswer } from "@/lib/api";
+import { getOrCreateUserId } from "@/lib/client-identity";
 import { useQuizTracking } from "@/hooks/useQuizTracking";
 import type { QuizAttempt } from "@/lib/quiz-db";
 import type { Quiz, QuizDifficulty, QuizResult } from "@/lib/types";
@@ -38,16 +39,32 @@ export default function QuizPage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [nextReviewDays, setNextReviewDays] = useState<number | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [error, setError] = useState("");
   const { saveAttempt, getProgress } = useQuizTracking();
+
+  useEffect(() => {
+    setUserId(getOrCreateUserId());
+  }, []);
 
   const handleGenerate = async () => {
     setLoading(true);
+    setError("");
     setResult(null);
     setAnswers({});
     setNextReviewDays(null);
-    const q = await generateQuiz(topic || "Y học tổng quát", difficulty, count);
-    setQuiz(q);
-    setLoading(false);
+    try {
+      const q = await generateQuiz(
+        topic || "Y học tổng quát",
+        difficulty,
+        count,
+      );
+      setQuiz(q);
+    } catch {
+      setError("Không thể tạo bộ câu hỏi. Vui lòng thử lại.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSelect = (questionId: string, optionKey: string) => {
@@ -56,28 +73,35 @@ export default function QuizPage() {
   };
 
   const handleSubmit = async () => {
-    if (!quiz) return;
-    setSubmitting(true);
-    const res = await submitQuizAnswer(quiz, answers);
-    setResult(res);
-    setSubmitting(false);
+    if (!quiz || !userId) return;
 
-    // Track progress AFTER the existing submit flow has succeeded. Any failure
-    // here is swallowed so the quiz experience is never disrupted.
+    setSubmitting(true);
+    setError("");
     try {
-      await saveAttempt({
-        quizId: res.quizId,
-        topic: quiz.topic,
-        difficulty: DIFFICULTY_TO_TRACKING[quiz.difficulty],
-        score: res.score,
-        totalQuestions: res.total,
-        correctCount: res.correctCount,
-        timestamp: Date.now(),
-      });
-      const schedule = await getProgress(quiz.topic);
-      setNextReviewDays(schedule?.interval ?? null);
-    } catch (err) {
-      console.warn("Quiz progress tracking skipped:", err);
+      const res = await submitQuizAnswer(quiz, answers, userId);
+      setResult(res);
+
+      // Track progress AFTER the existing submit flow has succeeded. Any failure
+      // here is swallowed so the quiz experience is never disrupted.
+      try {
+        await saveAttempt({
+          quizId: res.quizId,
+          topic: quiz.topic,
+          difficulty: DIFFICULTY_TO_TRACKING[quiz.difficulty],
+          score: res.score,
+          totalQuestions: res.total,
+          correctCount: res.correctCount,
+          timestamp: Date.now(),
+        });
+        const schedule = await getProgress(quiz.topic);
+        setNextReviewDays(schedule?.interval ?? null);
+      } catch (trackingError) {
+        console.warn("Quiz progress tracking skipped:", trackingError);
+      }
+    } catch {
+      setError("Không thể nộp bài. Vui lòng thử lại.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -86,6 +110,7 @@ export default function QuizPage() {
     setAnswers({});
     setResult(null);
     setNextReviewDays(null);
+    setError("");
   };
 
   return (
@@ -108,6 +133,12 @@ export default function QuizPage() {
             📊 Tiến độ của tôi
           </Link>
         </header>
+
+        {error && (
+          <p role="alert" className="mb-4 text-sm text-red-600">
+            {error}
+          </p>
+        )}
 
         {!quiz && (
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -229,7 +260,7 @@ export default function QuizPage() {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || !userId}
                 className="mt-6 inline-flex items-center gap-2 rounded-lg bg-secondary px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-secondary-600 disabled:opacity-60"
               >
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}

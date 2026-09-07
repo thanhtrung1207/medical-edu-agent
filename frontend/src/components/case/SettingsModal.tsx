@@ -1,82 +1,168 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Eye, EyeOff, ExternalLink } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
 import {
-  clearApiKeys,
-  getActiveProvider,
-  getClaudeApiKey,
-  getGeminiApiKey,
-  hasAnyApiKey,
-  setClaudeApiKey,
-  setGeminiApiKey,
-  setActiveProvider,
-  type AIProvider,
-} from "@/lib/api-keys";
-
-type ProviderChoice = AIProvider | "auto";
+  deleteAllMemories,
+  deleteMemory,
+  listMemories,
+  type LearningMemory,
+} from "@/lib/api";
+import { getOrCreateUserId } from "@/lib/client-identity";
 
 interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-export function SettingsModal({ open, onClose }: SettingsModalProps) {
-  const [claudeKey, setClaudeKey] = useState("");
-  const [geminiKey, setGeminiKey] = useState("");
-  const [provider, setProvider] = useState<ProviderChoice>("auto");
-  const [showClaudeKey, setShowClaudeKey] = useState(false);
-  const [showGeminiKey, setShowGeminiKey] = useState(false);
-  const [claudeSaved, setClaudeSaved] = useState(false);
-  const [geminiSaved, setGeminiSaved] = useState(false);
-  const [hasKey, setHasKey] = useState(false);
+function memorySummary(value: unknown): string {
+  if (typeof value !== "object" || value === null) return "Dữ liệu học tập";
+  const summary = (value as Record<string, unknown>).summary;
+  return typeof summary === "string" && summary
+    ? summary
+    : "Dữ liệu học tập";
+}
 
-  // Load values from localStorage when modal opens
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+}
+
+export function SettingsModal({ open, onClose }: SettingsModalProps) {
+  const [memories, setMemories] = useState<LearningMemory[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const deletionPendingRef = useRef(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusedElementRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
-    const ck = getClaudeApiKey();
-    const gk = getGeminiApiKey();
-    setClaudeKey(ck);
-    setGeminiKey(gk);
-    setClaudeSaved(ck.length > 0);
-    setGeminiSaved(gk.length > 0);
-    setProvider(getActiveProvider() ?? "auto");
-    setHasKey(hasAnyApiKey());
+
+    let cancelled = false;
+    const id = getOrCreateUserId();
+    setUserId(id);
+    setError("");
+    setLoading(true);
+
+    void listMemories(id)
+      .then((items) => {
+        if (!cancelled) setMemories(items);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Không thể tải dữ liệu học tập.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
-  // Close on Escape key
   useEffect(() => {
     if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+
+    previousFocusedElementRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus();
+
+    return () => {
+      previousFocusedElementRef.current?.focus();
+      previousFocusedElementRef.current = null;
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      const focusableElements = getFocusableElements(dialog);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+      const focusIsOutsideDialog = !dialog.contains(activeElement);
+
+      if (
+        event.shiftKey &&
+        (activeElement === firstElement ||
+          activeElement === dialog ||
+          focusIsOutsideDialog)
+      ) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (
+        !event.shiftKey &&
+        (activeElement === lastElement || focusIsOutsideDialog)
+      ) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, onClose]);
 
+  const handleDelete = async (memoryId: number) => {
+    if (!userId || deletionPendingRef.current) return;
+
+    deletionPendingRef.current = true;
+    setDeleting(true);
+    setError("");
+    try {
+      await deleteMemory(memoryId, userId);
+      setMemories((current) =>
+        current.filter((memory) => memory.id !== memoryId),
+      );
+    } catch {
+      setError("Không thể xóa dữ liệu học tập.");
+    } finally {
+      deletionPendingRef.current = false;
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!userId || deletionPendingRef.current) return;
+
+    deletionPendingRef.current = true;
+    setDeleting(true);
+    setError("");
+    try {
+      await deleteAllMemories(userId);
+      setMemories([]);
+    } catch {
+      setError("Không thể xóa dữ liệu học tập.");
+    } finally {
+      deletionPendingRef.current = false;
+      setDeleting(false);
+    }
+  };
+
   if (!open) return null;
-
-  const handleSave = () => {
-    setClaudeApiKey(claudeKey);
-    setGeminiApiKey(geminiKey);
-    setActiveProvider(provider === "auto" ? null : provider);
-    setClaudeSaved(claudeKey.length > 0);
-    setGeminiSaved(geminiKey.length > 0);
-    setHasKey(hasAnyApiKey());
-    window.dispatchEvent(new Event("api-keys-changed"));
-    onClose();
-  };
-
-  const handleClear = () => {
-    clearApiKeys();
-    setClaudeKey("");
-    setGeminiKey("");
-    setProvider("auto");
-    setClaudeSaved(false);
-    setGeminiSaved(false);
-    setHasKey(false);
-    window.dispatchEvent(new Event("api-keys-changed"));
-  };
 
   return (
     <div
@@ -84,195 +170,94 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="learning-memory-dialog-title"
+        aria-describedby="learning-memory-dialog-description"
+        tabIndex={-1}
         className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
-        {/* Header */}
         <div className="mb-3 flex items-center gap-2">
-          <span className="text-2xl">🔑</span>
-          <h2 className="text-lg font-bold text-slate-800">Cài đặt API Key</h2>
+          <h2
+            id="learning-memory-dialog-title"
+            className="text-lg font-bold text-slate-800"
+          >
+            Dữ liệu học tập
+          </h2>
         </div>
 
-        {/* Explanation */}
-        <p className="mb-5 text-sm text-slate-600">
-          Nhập API key để chat trực tiếp với AI. Key được lưu trong trình duyệt,
-          không gửi đến máy chủ nào khác.
+        <p
+          id="learning-memory-dialog-description"
+          className="mb-5 text-sm text-slate-600"
+        >
+          Dữ liệu này chỉ giúp cá nhân hóa các câu hỏi cùng chủ đề nha khoa trên trình duyệt này.
+          Bạn có thể xóa từng mục hoặc xóa toàn bộ bất cứ lúc nào.
         </p>
 
-        {/* Claude API Key */}
-        <div className="mb-4">
-          <div className="mb-1.5 flex items-center gap-2">
-            <label
-              htmlFor="claude-api-key"
-              className="text-sm font-semibold text-slate-700"
-            >
-              Anthropic API Key (Claude)
-            </label>
-            {claudeSaved && (
-              <span
-                className="inline-block h-2 w-2 rounded-full bg-green-500"
-                title="Đã lưu"
-              />
-            )}
-          </div>
-          <div className="relative">
-            <input
-              id="claude-api-key"
-              type={showClaudeKey ? "text" : "password"}
-              value={claudeKey}
-              onChange={(e) => setClaudeKey(e.target.value)}
-              placeholder="sk-ant-api03-..."
-              autoComplete="off"
-              className="w-full rounded-lg border border-borderSoft bg-cream/50 px-3 py-2 pr-10 font-mono text-sm text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-            <button
-              type="button"
-              onClick={() => setShowClaudeKey((s) => !s)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
-              aria-label={showClaudeKey ? "Ẩn key" : "Hiện key"}
-            >
-              {showClaudeKey ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </button>
-          </div>
-          <a
-            href="https://console.anthropic.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 inline-flex items-center gap-1 text-xs text-secondary-600 transition hover:text-secondary-700 hover:underline"
-          >
-            Lấy key tại console.anthropic.com
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
+        {error && (
+          <p role="alert" className="mb-3 text-sm text-red-600">
+            {error}
+          </p>
+        )}
 
-        {/* Gemini API Key */}
-        <div className="mb-4">
-          <div className="mb-1.5 flex items-center gap-2">
-            <label
-              htmlFor="gemini-api-key"
-              className="text-sm font-semibold text-slate-700"
-            >
-              Google AI API Key (Gemini)
-            </label>
-            {geminiSaved && (
-              <span
-                className="inline-block h-2 w-2 rounded-full bg-green-500"
-                title="Đã lưu"
-              />
-            )}
-          </div>
-          <div className="relative">
-            <input
-              id="gemini-api-key"
-              type={showGeminiKey ? "text" : "password"}
-              value={geminiKey}
-              onChange={(e) => setGeminiKey(e.target.value)}
-              placeholder="AIza..."
-              autoComplete="off"
-              className="w-full rounded-lg border border-borderSoft bg-cream/50 px-3 py-2 pr-10 font-mono text-sm text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-            <button
-              type="button"
-              onClick={() => setShowGeminiKey((s) => !s)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
-              aria-label={showGeminiKey ? "Ẩn key" : "Hiện key"}
-            >
-              {showGeminiKey ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </button>
-          </div>
-          <a
-            href="https://aistudio.google.com/apikey"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 inline-flex items-center gap-1 text-xs text-secondary-600 transition hover:text-secondary-700 hover:underline"
-          >
-            Lấy key tại aistudio.google.com
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
+        {loading ? (
+          <p className="py-4 text-sm text-slate-500">Đang tải dữ liệu học tập...</p>
+        ) : memories.length === 0 ? (
+          <p className="rounded-lg bg-cream p-4 text-sm text-slate-600">
+            Chưa có dữ liệu học tập nào được lưu.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {memories.map((memory) => (
+              <li
+                key={memory.id}
+                className="rounded-lg border border-slate-200 p-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800">
+                      {memory.memory_type}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">{memory.key}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(memory.id)}
+                    disabled={deleting}
+                    aria-label={`Xóa ${memory.key}`}
+                    className="shrink-0 rounded p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="mt-2 text-sm text-slate-600">
+                  {memorySummary(memory.value)}
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Cập nhật: {new Date(memory.updated_at).toLocaleString("vi-VN")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
 
-        {/* Provider preference */}
-        <div className="mb-5">
-          <label className="mb-2 block text-sm font-semibold text-slate-700">
-            Provider ưu tiên
-          </label>
-          <div className="space-y-1.5">
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-cream">
-              <input
-                type="radio"
-                name="provider"
-                value="claude"
-                checked={provider === "claude"}
-                onChange={() => setProvider("claude")}
-                className="h-4 w-4 accent-primary"
-              />
-              <span className="text-sm text-slate-700">
-                Claude (khuyến nghị)
-              </span>
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-cream">
-              <input
-                type="radio"
-                name="provider"
-                value="gemini"
-                checked={provider === "gemini"}
-                onChange={() => setProvider("gemini")}
-                className="h-4 w-4 accent-primary"
-              />
-              <span className="text-sm text-slate-700">Gemini</span>
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-cream">
-              <input
-                type="radio"
-                name="provider"
-                value="auto"
-                checked={provider === "auto"}
-                onChange={() => setProvider("auto")}
-                className="h-4 w-4 accent-primary"
-              />
-              <span className="text-sm text-slate-700">
-                Tự động (Claude trước)
-              </span>
-            </label>
-          </div>
-        </div>
-
-        {/* Status indicator */}
-        <div className="mb-4 rounded-lg bg-cream p-3">
-          {hasKey ? (
-            <p className="text-sm font-medium text-green-600">
-              ✓ Đã cấu hình API key
-            </p>
-          ) : (
-            <p className="text-sm font-medium text-amber-600">
-              ⚠ Chưa có API key — đang dùng chế độ mock
-            </p>
-          )}
-        </div>
-
-        {/* Buttons */}
-        <div className="flex justify-between gap-2">
+        <div className="mt-5 flex justify-between gap-2">
           <button
             type="button"
-            onClick={handleClear}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+            onClick={() => void handleDeleteAll()}
+            disabled={loading || deleting || memories.length === 0}
+            className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Xóa tất cả
+            Xóa toàn bộ
           </button>
           <button
             type="button"
-            onClick={handleSave}
+            onClick={onClose}
             className="rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-white transition hover:bg-primary-700"
           >
-            Lưu
+            Đóng
           </button>
         </div>
       </div>

@@ -76,8 +76,13 @@ def search_knowledge_base(query: str, top_k: int = 5) -> list:
         hits = retrieve(query=query, top_k=top_k, where=None)
         if not hits:
             return []
-        # Filter by distance threshold (cosine distance; lower = more similar)
-        filtered = [h for h in hits if (h.get("distance") or 1.0) <= 0.7]
+        # Filter by distance threshold (cosine distance; lower = more similar).
+        filtered = [
+            hit
+            for hit in hits
+            if isinstance(hit.get("distance"), (int, float))
+            and hit["distance"] <= 0.7
+        ]
         # Limit to top 3 after filtering
         filtered = filtered[:3]
         sources = []

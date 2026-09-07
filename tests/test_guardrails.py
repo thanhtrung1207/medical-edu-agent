@@ -198,6 +198,22 @@ class TestGuardrailRunner:
         assert result.should_block
         assert result.hallucination_risk >= 0.7
 
+    def test_post_check_blocks_unsupported_claim_with_real_source(self):
+        """A real source must not let an unrelated claim bypass the hard block."""
+        runner = GuardrailRunner()
+        source = "Ferrule là mô răng lành còn lại quanh cổ răng sau điều trị nội nha."
+        response = "Đặt trụ sợi luôn giúp răng tồn tại chính xác 50 năm."
+
+        result = runner.run_post_checks(
+            response,
+            sources=[source],
+            reasoning=["Đối chiếu với tài liệu ferrule."],
+            user_input="Trong học tập, ferrule là gì?",
+        )
+
+        assert result.should_block
+        assert result.hallucination_risk >= 0.7
+
 
 class TestConfidenceScorer:
     def test_high_confidence_grounded(self):

@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 # Load environment variables from a local .env file before anything else.
 load_dotenv()
 
-from api import chat, documents, feedback, quiz  # noqa: E402
+from api import chat, documents, feedback, memories, quiz  # noqa: E402
 from api.deps import services  # noqa: E402
 from api.models import HealthResponse, StatsResponse  # noqa: E402
 
@@ -67,6 +67,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -77,6 +79,7 @@ app.add_middleware(
 app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(feedback.router)
+app.include_router(memories.router)
 app.include_router(quiz.router)
 
 

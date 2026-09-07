@@ -12,6 +12,7 @@ This design covers the Python API and memory layer, the Next.js chat client, and
 
 - The browser generates a UUID v4 once and stores it as `medical-edu-agent.user-id` in `localStorage`.
 - The chat client sends this identifier in every request. `user_id` is required by the API and must be a non-empty value of at most 128 characters.
+- Standard chat always calls the backend. Browser-held API keys must not bypass session persistence or learning-memory behavior.
 - A session represents one conversation only. The active session ID is retained for page refreshes; starting a new conversation clears it so the API creates a new session for the same user ID.
 - Long-term memory contains only learning facts: `learning_goal`, `preference`, `weak_area`, `topic_interest`, and `bookmark`.
 - Raw chat transcripts, medical history, personal data, and inferred facts are never added to long-term memory.
@@ -23,7 +24,7 @@ This design covers the Python API and memory layer, the Next.js chat client, and
 
 The frontend owns the anonymous device identity. It must create the persistent UUID before the first chat request and include it with the active `session_id` when one exists. Requests with a missing or invalid user ID are rejected instead of falling back to `anonymous`.
 
-`SessionManager` continues to store messages by session ID. The chat endpoint creates a session when the request has no active session ID. Session history is used only for the active conversation. A new conversation has an empty history even though it shares the same user ID.
+`SessionManager` continues to store messages by session ID. When a request supplies a session ID, the chat endpoint must verify that its owner equals the request user ID; an unknown or non-owned session returns `404`. The chat endpoint creates a session only when no session ID is supplied. Session history is used only for the active conversation, and its history endpoint applies the same ownership check. A new conversation has an empty history even though it shares the same user ID.
 
 ### Learning-memory lifecycle
 
@@ -69,7 +70,7 @@ The chat client initializes the persistent user ID before sending a message. It 
 
 Settings display the current user's learning memories as type, topic/key, summary, and updated time. The view provides a delete action for each entry and a destructive "Delete all learning memory" action. It does not show previous transcript content.
 
-If local storage is cleared, the next visit receives a new identity and cannot retrieve the old local memory. Cross-device access is explicitly out of scope until authentication is introduced.
+If local storage is cleared, the next visit receives a new identity and cannot retrieve the old local memory. The generated ID provides device-scoped separation, not authentication: a client that deliberately supplies another known ID can impersonate it. Cross-device access and authenticated authorization are explicitly out of scope until authentication is introduced.
 
 ## Failure handling and privacy
 

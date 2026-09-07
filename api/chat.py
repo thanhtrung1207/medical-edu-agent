@@ -18,10 +18,11 @@ import json
 import logging
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from agents.guardrails.models import DISCLAIMER_VI
+from memory.learning_memory import extract_explicit_learning_facts
 
 from .deps import Services, get_services, rate_limiter
 from .models import (
@@ -64,15 +65,19 @@ def _build_citations(state: Dict[str, Any]) -> List[Citation]:
 async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
     """Execute the full chat pipeline and return a structured response."""
     # 1. Resolve or create the session.
-    session = None
     if request.session_id:
         session = svc.session_manager.get_session(request.session_id)
-    if session is None:
+        if session is None or session.user_id != request.user_id:
+            raise HTTPException(status_code=404, detail="Session not found")
+    else:
         session = svc.session_manager.create_session(user_id=request.user_id)
     session_id = session.id
 
-    # Persist the user's message.
+    # Persist the user's message and identify only this turn's topic.
     svc.session_manager.add_message(session_id, "user", request.message)
+    current_topic = svc.context_builder.detect_topic_from_messages(
+        [{"role": "user", "content": request.message}]
+    )
 
     # 2 & 3. Guardrail pre-checks (scope + emergency) — short-circuit if blocked.
     pre = svc.guardrail_runner.run_pre_checks(request.message)
@@ -97,9 +102,11 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
     # 4. Build personalized context from memory (best-effort).
     context: Dict[str, Any] = {}
     try:
-        context = svc.context_builder.build_context(request.user_id, session_id)
+        context = svc.context_builder.build_context(
+            request.user_id, session_id, current_topic
+        )
     except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Context build failed: %s", exc)
+        logger.warning("Context build failed: %s", type(exc).__name__)
 
     # 5. Run the reasoning workflow.
     state = await svc.reasoning_workflow.run(request.message, context)
@@ -137,7 +144,7 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
         confidence = float(post.confidence_score)
     disclaimer = post.disclaimer or DISCLAIMER_VI
 
-    # 7. Persist the assistant message and update the session topic.
+    # 7. Persist the assistant message, then record explicit learning facts.
     message_id = svc.session_manager.add_message(
         session_id,
         "assistant",
@@ -148,14 +155,26 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
             "warnings": warnings,
         },
     )
+    if not post.should_block:
+        try:
+            for fact in extract_explicit_learning_facts(
+                request.message, current_topic
+            ):
+                svc.memory_store.store(
+                    request.user_id,
+                    fact.memory_type,
+                    fact.key,
+                    fact.value,
+                    fact.confidence,
+                )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Memory write failed: %s", type(exc).__name__)
+
     try:
-        topic = state.get("specialty") or svc.context_builder.detect_topic_from_messages(
-            svc.session_manager.get_session_history(session_id)
-        )
-        if topic:
-            svc.session_manager.update_session_topic(session_id, topic)
+        if current_topic:
+            svc.session_manager.update_session_topic(session_id, current_topic)
     except Exception as exc:  # pragma: no cover - defensive
-        logger.debug("Topic update skipped: %s", exc)
+        logger.debug("Topic update skipped: %s", type(exc).__name__)
 
     # 8. Structured response.
     return ChatResponse(
@@ -220,9 +239,13 @@ async def chat(request: ChatRequest, svc: Services = Depends(get_services)):
     Returns a JSON :class:`ChatResponse` by default, or an SSE stream when
     ``request.stream`` is true.
     """
-    rate_limiter.check(f"chat:{request.user_id or 'anonymous'}")
+    rate_limiter.check(f"chat:{request.user_id}")
 
     if request.stream:
+        if request.session_id:
+            session = svc.session_manager.get_session(request.session_id)
+            if session is None or session.user_id != request.user_id:
+                raise HTTPException(status_code=404, detail="Session not found")
         return StreamingResponse(
             _stream_chat(request, svc),
             media_type="text/event-stream",
@@ -233,9 +256,13 @@ async def chat(request: ChatRequest, svc: Services = Depends(get_services)):
 
 
 @router.get("/chat/history/{session_id}", response_model=ChatHistoryResponse)
-def chat_history(session_id: str, svc: Services = Depends(get_services)):
-    """Return the message history and detected topic for a session."""
+def chat_history(
+    session_id: str,
+    user_id: str = Query(..., min_length=1, max_length=128),
+    svc: Services = Depends(get_services),
+):
+    """Return the requesting user's message history and detected topic."""
     session = svc.session_manager.get_session(session_id)
-    if session is None:
+    if session is None or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
     return ChatHistoryResponse(messages=session.messages, topic=session.topic)

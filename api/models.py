@@ -22,7 +22,7 @@ class ChatRequest(BaseModel):
 
     message: str
     session_id: Optional[str] = None
-    user_id: str = "anonymous"
+    user_id: str = Field(min_length=1, max_length=128)
     # When true the endpoint returns an SSE stream instead of a JSON body.
     stream: bool = False
 
@@ -59,6 +59,35 @@ class ChatHistoryResponse(BaseModel):
 
     messages: List[Dict[str, Any]] = Field(default_factory=list)
     topic: Optional[str] = None
+
+
+# --------------------------------------------------------------------------- #
+# Memories
+# --------------------------------------------------------------------------- #
+
+
+class MemoryResponse(BaseModel):
+    """A parsed long-term memory entry exposed to its owner."""
+
+    id: int
+    memory_type: str
+    key: str
+    value: Any
+    confidence: float
+    created_at: str
+    updated_at: str
+
+
+class MemoryListResponse(BaseModel):
+    """Response for ``GET /api/memories``."""
+
+    memories: List[MemoryResponse] = Field(default_factory=list)
+
+
+class MemoryDeleteResponse(BaseModel):
+    """Response for deleting one or all owned memories."""
+
+    deleted: int
 
 
 # --------------------------------------------------------------------------- #
@@ -200,7 +229,7 @@ class QuizSubmitRequest(BaseModel):
 
     quiz_id: Optional[str] = None
     quizId: Optional[str] = None
-    user_id: str = "anonymous"
+    user_id: str = Field(min_length=1, max_length=128)
     answers: Dict[str, str] = Field(default_factory=dict)
 
     def resolved_quiz_id(self) -> str:

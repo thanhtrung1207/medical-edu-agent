@@ -100,7 +100,6 @@ export default function CasePage() {
           <CaseChatPanel
             key={`chat-${scenario}`}
             initialMessage={caseText}
-            scenario={scenario as Scenario}
             onSessionCreated={handleSessionCreated}
             onFinishCase={handleFinishCase}
           />

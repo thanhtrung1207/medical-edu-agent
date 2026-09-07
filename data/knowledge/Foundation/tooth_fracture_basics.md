@@ -204,5 +204,6 @@ Khi tiên lượng bảo tồn kém (gãy chân sâu, split tooth, avulsion th�
 > - Foundation/implant_basics.md — implant đơn lẻ khi không bảo tồn được răng gãy
 > - Foundation/perio_basics.md — sức khỏe nha chu ảnh hưởng tiên lượng răng gãy
 > - Foundation/treatment_planning_basics.md — ra quyết định điều trị toàn diện
+> - Intermediate/endodontic_restoration_ferrule_posts.md — đánh giá ferrule, mô răng còn lại và vai trò trụ cốt sau điều trị nội nha
 
 > **Lưu ý sư phạm:** Khi gặp bệnh nhân răng vỡ, hãy xác định Class Ellis trước, rồi mới quyết định xử trí. Đặc biệt với avulsion (Class IV), thời gian là yếu tố quyết định tiên lượng - cần replant càng sớm càng tốt.

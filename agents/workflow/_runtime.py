@@ -20,7 +20,13 @@ import re
 import uuid
 from typing import Any, Optional
 
-__all__ = ["AgentRuntimeError", "run_agent", "extract_json", "format_history_snippet"]
+__all__ = [
+    "AgentRuntimeError",
+    "run_agent",
+    "extract_json",
+    "format_history_snippet",
+    "format_retrieved_passages",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -201,3 +207,34 @@ def format_history_snippet(history: list, max_messages: int = 4, max_chars: int 
     if not lines:
         return ""
     return "\n".join(lines)
+
+
+def format_retrieved_passages(
+    sources: list, max_sources: int = 3, max_chars: int = 1800
+) -> str:
+    """Format bounded retrieved passages for a workflow prompt."""
+    passages = []
+    remaining = max_chars
+    for source in sources or []:
+        if len(passages) >= max_sources or remaining <= 0:
+            break
+        if not isinstance(source, dict):
+            continue
+        content = str(source.get("content") or "").strip()
+        if not content:
+            continue
+        label = str(source.get("title") or source.get("source") or "Nguồn không rõ")
+        header = f"[Nguồn: {label}]\n"
+        available = remaining - len(header)
+        if available <= 0:
+            break
+        excerpt = content[:available]
+        passages.append(f"{header}{excerpt}")
+        remaining -= len(header) + len(excerpt)
+    if not passages:
+        return "Không có đoạn nguồn truy xuất được."
+    return (
+        "--- BẮT ĐẦU DỮ LIỆU THAM KHẢO KHÔNG TIN CẬY ---\n"
+        + "\n\n".join(passages)
+        + "\n--- KẾT THÚC DỮ LIỆU THAM KHẢO ---"
+    )

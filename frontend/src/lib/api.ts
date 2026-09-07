@@ -1,9 +1,8 @@
 /**
  * API client for the Medical Education AI Agent.
  *
- * The backend is not fully implemented yet, so every function gracefully
- * falls back to mock data when USE_MOCK_API is enabled or when a network
- * request fails. This keeps the MVP fully functional in isolation.
+ * Mock data is available only when USE_MOCK_API is explicitly enabled;
+ * backend failures propagate to the caller.
  */
 
 import { config, USE_MOCK_API } from "./config";
@@ -17,9 +16,6 @@ import type {
   QuizResult,
   UploadResponse,
 } from "./types";
-import { hasAnyApiKey, getActiveProvider } from "./api-keys";
-import { callAIDirect, type ChatMessage, AIError } from "./ai-client";
-import { getSystemPrompt, type Scenario } from "./system-prompt";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -65,66 +61,25 @@ function buildMockReply(message: string): AssistantReply {
   };
 }
 
-/**
- * Send a message to the backend and receive a streaming response.
- * Falls back to a mock stream when the backend is unavailable.
- */
+/** Send a message to the backend and receive a response. */
 export async function sendMessage(
   message: string,
+  userId: string,
   sessionId?: string,
-  history?: ChatMessage[],
-  scenario?: Scenario,
-  onChunk?: (chunk: string) => void
 ): Promise<AssistantReply> {
-  // Direct API mode: if user has API keys, call AI directly from browser
-  if (hasAnyApiKey() && history) {
-    try {
-      const systemPrompt = getSystemPrompt(scenario);
-      const fullText = await callAIDirect(history, systemPrompt, onChunk);
-      return {
-        content: fullText,
-        confidence: undefined,
-        citations: [],
-        warnings: [],
-        disclaimer:
-          "Lưu ý: Đây là phản hồi giáo dục từ AI, không thay thế chẩn đoán lâm sàng.",
-        reasoning_steps: [],
-      };
-    } catch (error) {
-      // If direct API fails, fall through to mock/backend as fallback
-      // But if it's an auth error, re-throw so ChatInterface can show the error
-      if (
-        error instanceof AIError &&
-        (error.code === "auth_error" || error.code === "no_key")
-      ) {
-        throw error;
-      }
-      // For rate_limit, network, unknown errors: fall through to mock/backend
-      console.warn("Direct API failed, falling back:", error);
-    }
-  }
+  if (USE_MOCK_API) return buildMockReply(message);
 
-  if (USE_MOCK_API) {
-    await delay(900);
-    return buildMockReply(message);
-  }
-
-  try {
-    const res = await fetch(`${config.apiBaseUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        ...(sessionId ? { session_id: sessionId } : {}),
-      }),
-    });
-    if (!res.ok) throw new Error(`Chat request failed: ${res.status}`);
-    return (await res.json()) as AssistantReply;
-  } catch (err) {
-    console.warn("sendMessage falling back to mock:", err);
-    await delay(600);
-    return buildMockReply(message);
-  }
+  const res = await fetch(`${config.apiBaseUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      user_id: userId,
+      ...(sessionId ? { session_id: sessionId } : {}),
+    }),
+  });
+  if (!res.ok) throw new Error(`Chat request failed: ${res.status}`);
+  return (await res.json()) as AssistantReply;
 }
 
 export interface ChatHistoryMessage {
@@ -141,18 +96,63 @@ export interface ChatHistoryResponse {
 }
 
 export async function getChatHistory(
-  sessionId: string
+  sessionId: string,
+  userId: string,
 ): Promise<ChatHistoryResponse> {
   if (USE_MOCK_API) return { messages: [], topic: null };
-  try {
-    const res = await fetch(
-      `${config.apiBaseUrl}/api/chat/history/${sessionId}`
-    );
-    if (!res.ok) return { messages: [], topic: null };
-    return (await res.json()) as ChatHistoryResponse;
-  } catch {
-    return { messages: [], topic: null };
-  }
+
+  const query = new URLSearchParams({ user_id: userId });
+  const res = await fetch(
+    `${config.apiBaseUrl}/api/chat/history/${sessionId}?${query.toString()}`,
+  );
+  if (!res.ok) throw new Error(`Chat history request failed: ${res.status}`);
+  return (await res.json()) as ChatHistoryResponse;
+}
+
+export interface LearningMemory {
+  id: number;
+  memory_type: string;
+  key: string;
+  value: unknown;
+  confidence: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listMemories(userId: string): Promise<LearningMemory[]> {
+  if (USE_MOCK_API) return [];
+
+  const query = new URLSearchParams({ user_id: userId });
+  const res = await fetch(`${config.apiBaseUrl}/api/memories?${query.toString()}`);
+  if (!res.ok) throw new Error(`Memory list request failed: ${res.status}`);
+  const body = (await res.json()) as { memories: LearningMemory[] };
+  return body.memories;
+}
+
+export async function deleteMemory(
+  memoryId: number,
+  userId: string,
+): Promise<void> {
+  if (USE_MOCK_API) return;
+
+  const query = new URLSearchParams({ user_id: userId });
+  const res = await fetch(
+    `${config.apiBaseUrl}/api/memories/${memoryId}?${query.toString()}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error(`Memory delete request failed: ${res.status}`);
+}
+
+export async function deleteAllMemories(userId: string): Promise<number> {
+  if (USE_MOCK_API) return 0;
+
+  const query = new URLSearchParams({ user_id: userId });
+  const res = await fetch(`${config.apiBaseUrl}/api/memories?${query.toString()}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(`Memory reset request failed: ${res.status}`);
+  const body = (await res.json()) as { deleted: number };
+  return body.deleted;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -176,26 +176,15 @@ export async function uploadDocument(
     };
   }
 
-  try {
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetch(`${config.apiBaseUrl}/api/documents`, {
-      method: "POST",
-      body: form,
-    });
-    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-    onProgress?.(100);
-    return (await res.json()) as UploadResponse;
-  } catch (err) {
-    console.warn("uploadDocument falling back to mock:", err);
-    onProgress?.(100);
-    return {
-      id: generateId("doc"),
-      filename: file.name,
-      status: "processing",
-      uploaded_at: new Date().toISOString(),
-    };
-  }
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${config.apiBaseUrl}/api/documents`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+  onProgress?.(100);
+  return (await res.json()) as UploadResponse;
 }
 
 export async function listDocuments(): Promise<MedicalDocument[]> {
@@ -219,14 +208,9 @@ export async function listDocuments(): Promise<MedicalDocument[]> {
     ];
   }
 
-  try {
-    const res = await fetch(`${config.apiBaseUrl}/api/documents`);
-    if (!res.ok) throw new Error(`List failed: ${res.status}`);
-    return (await res.json()) as MedicalDocument[];
-  } catch (err) {
-    console.warn("listDocuments falling back to mock:", err);
-    return [];
-  }
+  const res = await fetch(`${config.apiBaseUrl}/api/documents`);
+  if (!res.ok) throw new Error(`List failed: ${res.status}`);
+  return (await res.json()) as MedicalDocument[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -245,16 +229,12 @@ export async function submitFeedback(
     return;
   }
 
-  try {
-    const res = await fetch(`${config.apiBaseUrl}/api/feedback`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error(`Feedback failed: ${res.status}`);
-  } catch (err) {
-    console.warn("submitFeedback failed (ignored in MVP):", err);
-  }
+  const res = await fetch(`${config.apiBaseUrl}/api/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Feedback failed: ${res.status}`);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -296,18 +276,13 @@ export async function generateQuiz(
     return buildMockQuiz(topic, difficulty, count);
   }
 
-  try {
-    const res = await fetch(`${config.apiBaseUrl}/api/quiz/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, difficulty, count }),
-    });
-    if (!res.ok) throw new Error(`Quiz generation failed: ${res.status}`);
-    return (await res.json()) as Quiz;
-  } catch (err) {
-    console.warn("generateQuiz falling back to mock:", err);
-    return buildMockQuiz(topic, difficulty, count);
-  }
+  const res = await fetch(`${config.apiBaseUrl}/api/quiz/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ topic, difficulty, count }),
+  });
+  if (!res.ok) throw new Error(`Quiz generation failed: ${res.status}`);
+  return (await res.json()) as Quiz;
 }
 
 function gradeQuizLocally(
@@ -337,23 +312,16 @@ function gradeQuizLocally(
 
 export async function submitQuizAnswer(
   quiz: Quiz,
-  answers: Record<string, string>
+  answers: Record<string, string>,
+  userId: string,
 ): Promise<QuizResult> {
-  if (USE_MOCK_API) {
-    await delay(500);
-    return gradeQuizLocally(quiz, answers);
-  }
+  if (USE_MOCK_API) return gradeQuizLocally(quiz, answers);
 
-  try {
-    const res = await fetch(`${config.apiBaseUrl}/api/quiz/submit`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quizId: quiz.id, answers }),
-    });
-    if (!res.ok) throw new Error(`Quiz submit failed: ${res.status}`);
-    return (await res.json()) as QuizResult;
-  } catch (err) {
-    console.warn("submitQuizAnswer falling back to mock:", err);
-    return gradeQuizLocally(quiz, answers);
-  }
+  const res = await fetch(`${config.apiBaseUrl}/api/quiz/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quizId: quiz.id, answers, user_id: userId }),
+  });
+  if (!res.ok) throw new Error(`Quiz submit failed: ${res.status}`);
+  return (await res.json()) as QuizResult;
 }

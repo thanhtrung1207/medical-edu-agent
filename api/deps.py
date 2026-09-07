@@ -95,6 +95,19 @@ class Services:
 
             self.ingestion_pipeline = IngestionPipeline()
             logger.info("IngestionPipeline initialised.")
+
+            if os.getenv("CANONICAL_KNOWLEDGE_BOOTSTRAP") == "if-empty":
+                try:
+                    from tools.document_ingestion import bootstrap
+
+                    bootstrap.bootstrap_if_empty(
+                        self.ingestion_pipeline, bootstrap.DEFAULT_MANIFEST_PATH
+                    )
+                except Exception:
+                    logger.exception(
+                        "Canonical knowledge bootstrap failed; continuing with "
+                        "the existing ingestion pipeline."
+                    )
         except Exception as exc:  # pragma: no cover - depends on environment
             self.ingestion_pipeline = None
             logger.warning(

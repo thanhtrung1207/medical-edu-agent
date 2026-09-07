@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
+from memory.learning_memory import normalize_topic
 
 from .deps import Services, get_services, rate_limiter
 from .models import (
@@ -208,6 +209,24 @@ def submit_quiz(
 
     total = len(quiz["questions"])
     score = round((correct_count / total) * 100, 1) if total else 0.0
+    incorrect_count = total - correct_count
+    if incorrect_count:
+        try:
+            memory_topic = normalize_topic(topic)
+            if memory_topic:
+                svc.memory_store.store(
+                    request.user_id,
+                    "weak_area",
+                    memory_topic,
+                    {
+                        "topic": memory_topic,
+                        "incorrect_count": incorrect_count,
+                        "last_score": score,
+                    },
+                    confidence=incorrect_count / total,
+                )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Weak-area memory write skipped: %s", type(exc).__name__)
 
     svc.quiz_history[request.user_id].append(
         {

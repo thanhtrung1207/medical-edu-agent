@@ -22,9 +22,12 @@ import json
 import logging
 import os
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Optional
+
+from memory.learning_memory import normalize_topic
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,8 @@ MEMORY_TYPES = (
     "topic_interest",
     "correction",
     "bookmark",
+    "learning_goal",
+    "weak_area",
 )
 
 
@@ -129,6 +134,10 @@ class MemoryStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_memories_user_type "
                 "ON memories (user_id, memory_type)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_user_updated "
+                "ON memories (user_id, updated_at DESC)"
             )
             conn.commit()
         logger.debug("Memory DB schema ensured at %s", self.db_path)
@@ -295,6 +304,16 @@ class MemoryStore:
         )
         return organized
 
+    def list_for_user(self, user_id: str) -> list[MemoryEntry]:
+        """List a user's memories by most recent update without recording access."""
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT * FROM memories WHERE user_id = ? "
+                "ORDER BY updated_at DESC, id DESC",
+                (user_id,),
+            ).fetchall()
+        return [self._row_to_entry(row) for row in rows]
+
     # ------------------------------------------------------------------ #
     # Maintenance
     # ------------------------------------------------------------------ #
@@ -326,6 +345,27 @@ class MemoryStore:
             conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
             conn.commit()
         logger.info("Forgot memory %s", memory_id)
+
+    def forget_for_user(self, memory_id: int, user_id: str) -> bool:
+        """Delete one memory only when it belongs to the supplied user."""
+        with closing(self._connect()) as conn:
+            with conn:
+                cursor = conn.execute(
+                    "DELETE FROM memories WHERE id = ? AND user_id = ?",
+                    (memory_id, user_id),
+                )
+                deleted = cursor.rowcount
+        return deleted == 1
+
+    def delete_all_for_user(self, user_id: str) -> int:
+        """Delete every memory belonging to the supplied user."""
+        with closing(self._connect()) as conn:
+            with conn:
+                cursor = conn.execute(
+                    "DELETE FROM memories WHERE user_id = ?", (user_id,)
+                )
+                deleted = cursor.rowcount
+        return deleted
 
     def forget_by_key(self, user_id: str, memory_type: str, key: str) -> None:
         """Remove memories matching user/type/key.
@@ -376,35 +416,21 @@ class MemoryStore:
     # ------------------------------------------------------------------ #
     # Bookmarks
     # ------------------------------------------------------------------ #
-    def bookmark_response(
-        self,
-        user_id: str,
-        message_id: str,
-        topic: str,
-        content_summary: str,
-    ) -> None:
-        """Bookmark an important response for later reference.
-
-        Bookmarks are stored as ``memory_type='bookmark'`` keyed by the
-        originating ``message_id``.
-
-        Args:
-            user_id: Owning user identifier.
-            message_id: Id of the bookmarked message.
-            topic: Topic associated with the response.
-            content_summary: Short summary of the response content.
-        """
-        payload = {
-            "message_id": message_id,
-            "topic": topic,
-            "summary": content_summary,
-        }
-        self.store(user_id, "bookmark", message_id, payload, confidence=1.0)
-        logger.info(
-            "Bookmarked message %s for user=%s topic=%r",
-            message_id,
+    def bookmark_response(self, user_id: str, message_id: str, topic: str) -> None:
+        """Bookmark a response using only its ID and normalized dental topic."""
+        normalized_topic = normalize_topic(topic)
+        if not normalized_topic:
+            return
+        self.store(
             user_id,
-            topic,
+            "bookmark",
+            message_id,
+            {
+                "message_id": message_id,
+                "topic": normalized_topic,
+                "summary": f"Đã đánh dấu: {normalized_topic}",
+            },
+            confidence=1.0,
         )
 
     def get_bookmarks(self, user_id: str, topic: str = None) -> list[MemoryEntry]:

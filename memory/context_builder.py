@@ -15,6 +15,7 @@ Design notes:
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import Counter
 from typing import Optional
@@ -28,6 +29,9 @@ logger = logging.getLogger(__name__)
 # Vietnamese averages roughly ~4 chars/token; ~500 tokens => ~2000 chars.
 _MAX_CONTEXT_CHARS = 2000
 
+# Long-term learning data must remain a compact part of the prompt.
+_MAX_LONG_TERM_MEMORY_CHARS = 1500
+
 # Number of recent messages to surface in the context.
 _RECENT_HISTORY_LIMIT = 6
 
@@ -36,9 +40,9 @@ _RECENT_HISTORY_LIMIT = 6
 # matching is done on the raw lowercased text).
 _TOPIC_KEYWORDS: dict[str, tuple[str, ...]] = {
     "Răng vỡ": ("răng vỡ", "gãy răng", "răng nứt", "fracture", "cracked tooth", "ellis"),
+    "Implant": ("implant", "cắm ghép", "trụ implant", "osseointegration"),
     "Mất răng": ("mất răng", "răng mất", "đơn lẻ", "edentulous", "tooth loss"),
     "Phục hình": ("phục hình", "cầu răng", "mão", "prosthodontics", "fpd", "abutment"),
-    "Implant": ("implant", "cắm ghép", "trụ implant", "osseointegration"),
     "Nha chu": ("nha chu", "nướu", "tiêu xương", "lung lay", "periodontics"),
     "Nội nha": ("nội nha", "tủy", "endodontics", "lấy tủy"),
     "Chỉnh nha": ("chỉnh nha", "orthodontics", "niềng răng"),
@@ -70,43 +74,28 @@ class ContextBuilder:
         session_id: str,
         current_topic: str = None,
     ) -> dict:
-        """Build comprehensive structured context for the agent.
+        """Build history plus strict, caller-topic-scoped learning memories.
 
-        Assembles recent conversation history, user preferences, relevant
-        long-term memories (topic interests, weak areas, bookmarks) and a
-        short natural-language profile summary.
-
-        Args:
-            user_id: Owning user identifier.
-            session_id: The active session identifier.
-            current_topic: Optional topic to bias relevance. If omitted, it is
-                inferred from recent messages.
-
-        Returns:
-            A dict with keys:
-                * ``conversation_history``: list of recent message dicts.
-                * ``user_preferences``: dict of preferences.
-                * ``relevant_memories``: list of relevant :class:`MemoryEntry`.
-                * ``user_profile_summary``: str summary for prompt injection.
+        A missing topic deliberately suppresses long-term memory. Session
+        history remains available even when long-term storage is unavailable.
         """
         history = self.session_manager.get_session_history(
             session_id, limit=_RECENT_HISTORY_LIMIT
         )
-
-        if not current_topic:
-            current_topic = self.detect_topic_from_messages(history)
-
-        preferences = self.memory_store.get_user_preferences(user_id)
-        all_memories = self.memory_store.recall_all(user_id)
-        relevant = self._select_relevant_memories(all_memories, current_topic)
-
-        summary = self._build_profile_summary(preferences, all_memories)
+        relevant: list[MemoryEntry] = []
+        if current_topic:
+            try:
+                all_memories = self.memory_store.recall_all(user_id)
+            except Exception as exc:
+                logger.warning("Memory read failed: %s", type(exc).__name__)
+                all_memories = {}
+            relevant = self._select_relevant_memories(all_memories, current_topic)
 
         context = {
             "conversation_history": history,
-            "user_preferences": preferences,
+            "user_preferences": {},
             "relevant_memories": relevant,
-            "user_profile_summary": summary,
+            "user_profile_summary": "",
         }
         logger.debug(
             "Built context for user=%s session=%s topic=%r (%d memories)",
@@ -126,41 +115,30 @@ class ContextBuilder:
         session_id: str,
         current_topic: str = None,
     ) -> str:
-        """Build a formatted Vietnamese string to inject into agent prompts.
-
-        The output is bounded to roughly 500 tokens; less relevant content is
-        trimmed first. Returns an empty string if no useful context exists.
-
-        Args:
-            user_id: Owning user identifier.
-            session_id: The active session identifier.
-            current_topic: Optional topic override for relevance biasing.
-
-        Returns:
-            A formatted context string, possibly empty.
-        """
-        history = self.session_manager.get_session_history(
-            session_id, limit=_RECENT_HISTORY_LIMIT
-        )
-        if not current_topic:
-            current_topic = self.detect_topic_from_messages(history)
-
-        preferences = self.memory_store.get_user_preferences(user_id)
-        all_memories = self.memory_store.recall_all(user_id)
-
-        user_lines = self._format_user_info(preferences, all_memories)
+        """Build a bounded Vietnamese prompt context from structured context."""
+        context_data = self.build_context(user_id, session_id, current_topic)
         history_lines = self._format_recent_history(
-            history, session_id, current_topic
+            context_data["conversation_history"], current_topic
+        )
+        history_block = ""
+        if history_lines:
+            history_block = "[Lịch sử gần đây]\n" + "\n".join(history_lines)
+
+        memory_block_budget = _MAX_CONTEXT_CHARS - len(history_block)
+        if history_block:
+            memory_block_budget -= 2  # Separator between prompt blocks.
+        memory_lines = self._format_relevant_memories(
+            context_data["relevant_memories"],
+            min(_MAX_LONG_TERM_MEMORY_CHARS, max(memory_block_budget, 0)),
         )
 
         blocks: list[str] = []
-        if user_lines:
-            blocks.append("[Thông tin người dùng]\n" + "\n".join(user_lines))
-        if history_lines:
-            blocks.append("[Lịch sử gần đây]\n" + "\n".join(history_lines))
+        if memory_lines:
+            blocks.append("[Dữ liệu học tập]\n" + memory_lines)
+        if history_block:
+            blocks.append(history_block)
 
-        context = "\n\n".join(blocks).strip()
-        context = self._enforce_size_budget(context)
+        context = self._enforce_size_budget("\n\n".join(blocks).strip())
         logger.debug(
             "Built prompt context for user=%s (%d chars)", user_id, len(context)
         )
@@ -237,33 +215,43 @@ class ContextBuilder:
     def _select_relevant_memories(
         self, all_memories: dict, current_topic: Optional[str]
     ) -> list[MemoryEntry]:
-        """Flatten and rank memories by relevance to the current topic.
+        """Return at most five object-valued memories for one exact topic."""
+        if not current_topic:
+            return []
 
-        Args:
-            all_memories: Mapping of type to :class:`MemoryEntry` lists.
-            current_topic: Topic used to boost relevance, if any.
-
-        Returns:
-            Memories sorted by relevance score (desc).
-        """
-        flat: list[MemoryEntry] = []
+        relevant: list[MemoryEntry] = []
         for entries in all_memories.values():
-            flat.extend(entries)
+            for entry in entries:
+                value = entry.parsed_value()
+                if isinstance(value, dict) and value.get("topic") == current_topic:
+                    relevant.append(entry)
 
-        topic_lc = (current_topic or "").lower()
+        relevant.sort(
+            key=lambda entry: (entry.confidence, entry.updated_at, entry.id),
+            reverse=True,
+        )
+        return relevant[:5]
 
-        def relevance(entry: MemoryEntry) -> float:
-            score = entry.confidence
-            if topic_lc:
-                haystack = f"{entry.key} {entry.value}".lower()
-                if topic_lc in haystack:
-                    score += 1.0
-            # Slightly favor frequently used memories.
-            score += min(entry.access_count, 10) * 0.01
-            return score
-
-        flat.sort(key=relevance, reverse=True)
-        return flat
+    def _format_relevant_memories(
+        self,
+        memories: list[MemoryEntry],
+        max_block_chars: int = _MAX_LONG_TERM_MEMORY_CHARS,
+    ) -> str:
+        """Serialize complete learning-memory lines within the prompt budget."""
+        memory_budget = max(
+            0, max_block_chars - len("[Dữ liệu học tập]\n")
+        )
+        lines: list[str] = []
+        for entry in memories:
+            line = (
+                f"- {entry.memory_type}: "
+                f"{json.dumps(entry.parsed_value(), ensure_ascii=False)}"
+            )
+            line_size = len(line) + (1 if lines else 0)
+            if line_size <= memory_budget:
+                lines.append(line)
+                memory_budget -= line_size
+        return "\n".join(lines)
 
     def _build_profile_summary(self, preferences: dict, all_memories: dict) -> str:
         """Build a short natural-language profile summary for the agent.
@@ -328,36 +316,25 @@ class ContextBuilder:
         return lines
 
     def _format_recent_history(
-        self, history: list[dict], session_id: str, current_topic: Optional[str]
+        self, history: list[dict], current_topic: Optional[str]
     ) -> list[str]:
-        """Format the ``[Lịch sử gần đây]`` section lines.
+        """Format retained recent turns without reloading session history.
 
         Args:
-            history: Recent message dicts.
-            session_id: The active session identifier.
+            history: Recent message dicts in chronological order.
             current_topic: Detected/assigned topic.
 
         Returns:
             A list of formatted Vietnamese bullet lines.
         """
         lines: list[str] = []
-
-        session = self.session_manager.get_session(session_id)
-        prev_topic = session.topic if session else None
-        if prev_topic:
-            lines.append(f"- Chủ đề trước: {prev_topic}")
-        elif current_topic:
+        if current_topic:
             lines.append(f"- Chủ đề hiện tại: {current_topic}")
 
-        last_user = None
-        for msg in reversed(history):
-            if msg.get("role") == "user":
-                last_user = msg
-                break
-        if last_user:
-            lines.append(
-                f"- Câu hỏi gần nhất: {self._truncate(last_user['content'], 100)}"
-            )
+        for message in history:
+            role = str(message.get("role") or "unknown")
+            content = self._truncate(str(message.get("content") or ""), 100)
+            lines.append(f"- {role}: {content}")
         return lines
 
     @staticmethod
@@ -403,21 +380,13 @@ class ContextBuilder:
         return text[: max_len - 1].rstrip() + "…"
 
     @staticmethod
-    def _enforce_size_budget(context: str) -> str:
-        """Trim the context to the configured character budget.
-
-        Trimming is done at line boundaries where possible so the output stays
-        well-formed.
-
-        Args:
-            context: The assembled context string.
-
-        Returns:
-            A context string within ``_MAX_CONTEXT_CHARS``.
-        """
-        if len(context) <= _MAX_CONTEXT_CHARS:
+    def _enforce_size_budget(
+        context: str, max_chars: int = _MAX_CONTEXT_CHARS
+    ) -> str:
+        """Trim context to ``max_chars`` at line boundaries where possible."""
+        if len(context) <= max_chars:
             return context
-        truncated = context[:_MAX_CONTEXT_CHARS]
+        truncated = context[:max_chars]
         # Prefer cutting at the last newline to avoid partial lines.
         newline = truncated.rfind("\n")
         if newline > 0:

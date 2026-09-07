@@ -3,12 +3,10 @@
 import { useEffect, useState } from "react";
 import { Moon, Stethoscope, Sun, Settings } from "lucide-react";
 import { SettingsModal } from "@/components/case/SettingsModal";
-import { hasAnyApiKey } from "@/lib/api-keys";
 
 export function Header() {
   const [dark, setDark] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [hasKey, setHasKey] = useState(false);
 
   // Initialise theme from system / stored preference.
   useEffect(() => {
@@ -19,23 +17,6 @@ export function Header() {
     setDark(prefersDark);
     document.documentElement.classList.toggle("dark", prefersDark);
   }, []);
-
-  // Check API key status on mount and sync when keys change elsewhere
-  useEffect(() => {
-    setHasKey(hasAnyApiKey());
-    const handler = () => setHasKey(hasAnyApiKey());
-    window.addEventListener("storage", handler);
-    window.addEventListener("api-keys-changed", handler);
-    return () => {
-      window.removeEventListener("storage", handler);
-      window.removeEventListener("api-keys-changed", handler);
-    };
-  }, []);
-
-  const handleCloseSettings = () => {
-    setSettingsOpen(false);
-    setHasKey(hasAnyApiKey());
-  };
 
   const toggleTheme = () => {
     const next = !dark;
@@ -63,16 +44,11 @@ export function Header() {
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          title="Cài đặt API Key"
-          aria-label="Cài đặt API Key"
-          className="relative rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          title="Quản lý dữ liệu học tập"
+          aria-label="Quản lý dữ liệu học tập"
+          className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           <Settings className="h-4 w-4" />
-          <span
-            className={`absolute top-1 right-1 h-2 w-2 rounded-full ${
-              hasKey ? "bg-green-500" : "bg-amber-400"
-            }`}
-          />
         </button>
         <button
           type="button"
@@ -83,7 +59,7 @@ export function Header() {
           {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </button>
       </div>
-      <SettingsModal open={settingsOpen} onClose={handleCloseSettings} />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </header>
   );
 }

@@ -7,14 +7,41 @@ full-pipeline tests need ``sentence-transformers`` / ``chromadb`` and are marked
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+from packaging.requirements import Requirement
+from packaging.version import Version
 
 from tools.document_ingestion import (
     Chunk,
     TextBlock,
+    VectorIndexer,
     chunk_text_blocks,
     preprocess_document,
 )
+
+
+class TestDependencyContracts:
+    def test_chromadb_requirement_supports_not_found_error(self):
+        requirements_path = Path(__file__).resolve().parents[1] / "requirements.txt"
+        requirements = [
+            Requirement(line)
+            for line in requirements_path.read_text(encoding="utf-8").splitlines()
+            if line and not line.startswith("#")
+        ]
+        chromadb = next(
+            requirement
+            for requirement in requirements
+            if requirement.name == "chromadb"
+        )
+        minimum_version = next(
+            Version(specifier.version)
+            for specifier in chromadb.specifier
+            if specifier.operator == ">="
+        )
+
+        assert minimum_version >= Version("1.5.9")
 
 
 class TestPreprocessor:
@@ -112,6 +139,47 @@ class TestChunker:
         assert chunks[0].metadata["section_title"] == "Tim mạch"
         assert chunks[0].metadata["chapter"] == "Chương 1"
         assert chunks[0].metadata["chunk_index"] == 0
+
+
+class TestVectorIndexer:
+    def test_is_empty_strict_propagates_collection_errors(self, monkeypatch):
+        indexer = VectorIndexer()
+
+        def unavailable_collection():
+            raise RuntimeError("collection unavailable")
+
+        monkeypatch.setattr(indexer, "_get_collection", unavailable_collection)
+
+        with pytest.raises(RuntimeError, match="collection unavailable"):
+            indexer.is_empty_strict()
+
+    def test_reset_strict_propagates_unexpected_deletion_errors(self, monkeypatch):
+        indexer = VectorIndexer()
+
+        class FailingClient:
+            def delete_collection(self, name):
+                raise RuntimeError("collection deletion failed")
+
+        monkeypatch.setattr(indexer, "_get_client", lambda: FailingClient())
+
+        with pytest.raises(RuntimeError, match="collection deletion failed"):
+            indexer.reset_strict()
+
+    def test_reset_strict_accepts_any_missing_collection_message(self, monkeypatch):
+        from chromadb.errors import NotFoundError
+
+        indexer = VectorIndexer(collection_name="canonical_knowledge")
+        indexer._collection = object()
+
+        class MissingCollectionClient:
+            def delete_collection(self, name):
+                raise NotFoundError("collection was already removed")
+
+        monkeypatch.setattr(indexer, "_get_client", lambda: MissingCollectionClient())
+
+        indexer.reset_strict()
+
+        assert indexer._collection is None
 
 
 @pytest.mark.slow

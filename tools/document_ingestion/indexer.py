@@ -115,6 +115,10 @@ class VectorIndexer:
         """Return True if the collection has no documents."""
         return self.count() == 0
 
+    def is_empty_strict(self) -> bool:
+        """Return whether the collection is empty, propagating inspection errors."""
+        return int(self._get_collection().count()) == 0
+
     def add(
         self,
         ids: List[str],
@@ -213,6 +217,18 @@ class VectorIndexer:
             return
         self._get_collection().delete(ids=ids)
         logger.info("Deleted %d chunk id(s)", len(ids))
+
+    def reset_strict(self) -> None:
+        """Delete the collection, allowing it to already be absent."""
+        client = self._get_client()
+        from chromadb.errors import NotFoundError  # type: ignore
+
+        try:
+            client.delete_collection(self.collection_name)
+        except NotFoundError:
+            pass
+        self._collection = None
+        logger.info("Reset collection '%s'", self.collection_name)
 
     def reset(self) -> None:
         """Delete the entire collection (irreversible)."""

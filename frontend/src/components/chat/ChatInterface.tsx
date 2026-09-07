@@ -3,10 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Send, Stethoscope } from "lucide-react";
 import type { Message } from "@/lib/types";
-import { sendMessage, getChatHistory } from "@/lib/api";
-import { AIError } from "@/lib/ai-client";
+import { getChatHistory, sendMessage } from "@/lib/api";
+import {
+  clearActiveSessionId,
+  getActiveSessionId,
+  getOrCreateUserId,
+  setActiveSessionId,
+} from "@/lib/client-identity";
 import { generateId } from "@/lib/utils";
-import { hasAnyApiKey } from "@/lib/api-keys";
 import { MessageBubble } from "./MessageBubble";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
@@ -34,10 +38,8 @@ interface ChatInterfaceProps {
   onSessionCreated?: (sessionId: string) => void;
   /** Callback when user clicks "Finish & Save". */
   onFinishCase?: (summary: string) => void;
-  /** Skip localStorage, start a fresh session (case screen). */
+  /** Skip the stored active session and start a fresh conversation (case screen). */
   freshSession?: boolean;
-  /** Clinical scenario for direct API system prompt. */
-  scenario?: 'fracture' | 'missing';
 }
 
 export function ChatInterface({
@@ -48,24 +50,19 @@ export function ChatInterface({
   onSessionCreated,
   onFinishCase,
   freshSession,
-  scenario,
 }: ChatInterfaceProps = {}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(() => {
-    if (freshSession || typeof window === "undefined") return null;
-    return localStorage.getItem("chatSessionId");
-  });
+  const [userId, setUserId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historyLoaded = useRef(false);
-  const [initialSessionId] = useState<string | null>(() => {
-    if (freshSession || typeof window === "undefined") return null;
-    return localStorage.getItem("chatSessionId");
-  });
+  const storedSessionId = useRef<string | null>(null);
   const initialMessageSent = useRef(false);
   const finishCasePendingRef = useRef(false);
+  const conversationGenerationRef = useRef(0);
   const [caseFinished, setCaseFinished] = useState(false);
 
   const scrollToBottom = () => {
@@ -80,219 +77,174 @@ export function ChatInterface({
   }, [messages, isThinking]);
 
   useEffect(() => {
-    if (historyLoaded.current || !sessionId) return;
-    if (sessionId !== initialSessionId) return; // skip newly-created sessions
+    const id = getOrCreateUserId();
+    const activeSessionId = freshSession ? null : getActiveSessionId();
+
+    storedSessionId.current = activeSessionId;
+    historyLoaded.current = false;
+    setUserId(id);
+    setSessionId(activeSessionId);
+  }, [freshSession]);
+
+  useEffect(() => {
+    if (
+      historyLoaded.current ||
+      !sessionId ||
+      !userId ||
+      sessionId !== storedSessionId.current
+    ) {
+      return;
+    }
+
     historyLoaded.current = true;
     let cancelled = false;
-    getChatHistory(sessionId)
+
+    getChatHistory(sessionId, userId)
       .then((data) => {
         if (cancelled || data.messages.length === 0) return;
-        const restoredMessages: Message[] = data.messages.map((m) => ({
-          id: m.id,
-          role: m.role === "assistant" ? "assistant" : "user",
-          content: m.content,
-          timestamp: new Date(m.created_at),
-          confidence: m.metadata?.confidence,
-          citations: m.metadata?.citations,
-          reasoning_steps: m.metadata?.reasoning_steps,
-          warnings: m.metadata?.warnings,
+        const restoredMessages: Message[] = data.messages.map((message) => ({
+          id: message.id,
+          role: message.role === "assistant" ? "assistant" : "user",
+          content: message.content,
+          timestamp: new Date(message.created_at),
+          confidence: message.metadata?.confidence,
+          citations: message.metadata?.citations,
+          reasoning_steps: message.metadata?.reasoning_steps,
+          warnings: message.metadata?.warnings,
         }));
-        setMessages((prev) => {
-          // If user sent messages during the fetch, preserve them
-          const userSentDuringLoad = prev.some((m) => m.role === "user");
+        setMessages((current) => {
+          const userSentDuringLoad = current.some(
+            (message) => message.role === "user",
+          );
           return userSentDuringLoad
-            ? [...restoredMessages, ...prev]
+            ? [...restoredMessages, ...current]
             : restoredMessages;
         });
       })
       .catch(() => {});
+
     return () => {
       cancelled = true;
     };
-  }, [sessionId, initialSessionId]);
+  }, [sessionId, userId]);
 
   const handleSend = async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || isThinking) return;
+    if (!trimmed || isThinking || !userId) return;
 
-    const userMsg: Message = {
+    const requestGeneration = conversationGenerationRef.current;
+    const isCurrentConversation = () =>
+      requestGeneration === conversationGenerationRef.current;
+    const userMessage: Message = {
       id: generateId("msg"),
       role: "user",
       content: trimmed,
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((current) => [...current, userMessage]);
     setInput("");
     setIsThinking(true);
 
-    // Build conversation history for direct API mode
-    // Fix 3: Filter out error messages (IDs starting with "error-") from history
-    const history = messages
-      .filter(
-        (m) =>
-          (m.role === "user" || m.role === "assistant") &&
-          !m.id.startsWith("error-"),
-      )
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-    history.push({ role: "user", content: trimmed });
-
-    // Fix 1: Only add streaming placeholder when API keys are present.
-    // In mock/backend mode this avoids an empty bubble during the wait.
-    const willStream = hasAnyApiKey();
-    const placeholderId = `assistant-${Date.now()}`;
-    if (willStream) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: placeholderId,
-          role: "assistant",
-          content: "",
-          timestamp: new Date(),
-        },
-      ]);
-    }
-
     try {
-      const reply = await sendMessage(
-        trimmed,
-        sessionId ?? undefined,
-        history,
-        scenario,
-        (chunk: string) => {
-          // Fix 2: Don't set isThinking to false on first chunk.
-          // Keep it true until the finally block to prevent concurrent sends.
-          // The streaming text appearing in the placeholder bubble is
-          // sufficient UX feedback.
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === placeholderId
-                ? { ...m, content: m.content + chunk }
-                : m,
-            ),
-          );
-        },
-      );
+      const reply = await sendMessage(trimmed, userId, sessionId ?? undefined);
+      if (!isCurrentConversation()) return;
 
-      // Fix 4: Handle empty AI response — show error instead of a blank bubble
-      if (!reply.content || !reply.content.trim()) {
-        if (willStream) {
-          setMessages((prev) => [
-            ...prev.filter((m) => m.id !== placeholderId),
-            {
-              id: `error-${Date.now()}`,
-              role: "assistant",
-              content: "⚠️ AI không trả về nội dung. Vui lòng thử lại.",
-              timestamp: new Date(),
-            },
-          ]);
-        }
+      if (!reply.content?.trim()) {
+        finishCasePendingRef.current = false;
+        setMessages((current) => [
+          ...current,
+          {
+            id: generateId("msg"),
+            role: "assistant",
+            content: "AI không trả về nội dung. Vui lòng thử lại.",
+            confidence: 0,
+            timestamp: new Date(),
+          },
+        ]);
         return;
       }
 
-      if (willStream) {
-        // Update placeholder with final content/metadata
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === placeholderId
-              ? {
-                  ...m,
-                  content: reply.content || m.content,
-                  confidence: reply.confidence,
-                  citations: reply.citations,
-                  warnings: reply.warnings,
-                  disclaimer: reply.disclaimer,
-                  reasoning_steps: reply.reasoning_steps,
-                }
-              : m,
-          ),
-        );
-      } else {
-        // Add assistant message normally (no placeholder was created)
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: placeholderId,
-            role: "assistant",
-            content: reply.content,
-            timestamp: new Date(),
-            confidence: reply.confidence,
-            citations: reply.citations,
-            warnings: reply.warnings,
-            disclaimer: reply.disclaimer,
-            reasoning_steps: reply.reasoning_steps,
-          },
-        ]);
-      }
+      setMessages((current) => [
+        ...current,
+        {
+          id: reply.message_id ?? generateId("msg"),
+          role: "assistant",
+          content: reply.content,
+          timestamp: new Date(),
+          confidence: reply.confidence,
+          citations: reply.citations,
+          warnings: reply.warnings,
+          disclaimer: reply.disclaimer,
+          reasoning_steps: reply.reasoning_steps,
+        },
+      ]);
 
-      if (reply.session_id && reply.session_id !== sessionId) {
-        setSessionId(reply.session_id);
-        if (!freshSession && typeof window !== "undefined") {
-          localStorage.setItem("chatSessionId", reply.session_id);
+      if (reply.session_id) {
+        setActiveSessionId(reply.session_id);
+        if (reply.session_id !== sessionId) {
+          setSessionId(reply.session_id);
+          onSessionCreated?.(reply.session_id);
         }
-        onSessionCreated?.(reply.session_id);
       }
 
       if (finishCasePendingRef.current && onFinishCase) {
         finishCasePendingRef.current = false;
         onFinishCase(reply.content);
       }
-    } catch (error) {
-      finishCasePendingRef.current = false;
+    } catch {
+      if (!isCurrentConversation()) return;
 
-      if (
-        error instanceof AIError &&
-        (error.code === "auth_error" || error.code === "no_key")
-      ) {
-        // Remove the placeholder (only if it was added) and show an error
-        // message with setup guidance
-        setMessages((prev) => [
-          ...(willStream ? prev.filter((m) => m.id !== placeholderId) : prev),
-          {
-            id: `error-${Date.now()}`,
-            role: "assistant",
-            content: `⚠️ ${error.message}\n\nVui lòng nhấn ⚙️ ở góc trên để mở Cài đặt và nhập API key.`,
-            timestamp: new Date(),
-          },
-        ]);
-      } else {
-        // Other errors: remove placeholder (only if added) and show generic error
-        setMessages((prev) => [
-          ...(willStream ? prev.filter((m) => m.id !== placeholderId) : prev),
-          {
-            id: generateId("msg"),
-            role: "assistant",
-            content:
-              "Đã xảy ra lỗi khi kết nối với trợ lý. Vui lòng thử lại.",
-            confidence: 0,
-            timestamp: new Date(),
-          },
-        ]);
-      }
+      finishCasePendingRef.current = false;
+      setMessages((current) => [
+        ...current,
+        {
+          id: generateId("msg"),
+          role: "assistant",
+          content: "Đã xảy ra lỗi khi kết nối với trợ lý. Vui lòng thử lại.",
+          confidence: 0,
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
+      if (!isCurrentConversation()) return;
+
       setIsThinking(false);
       textareaRef.current?.focus();
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
+  const handleNewConversation = () => {
+    conversationGenerationRef.current += 1;
+    finishCasePendingRef.current = false;
+    clearActiveSessionId();
+    storedSessionId.current = null;
+    historyLoaded.current = false;
+    setCaseFinished(false);
+    setSessionId(null);
+    setMessages([]);
+    setIsThinking(false);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
       void handleSend(input);
     }
   };
 
-  // Auto-send initialMessage on mount (once).
   useEffect(() => {
     if (
-      initialMessage &&
-      initialMessage.trim() !== "" &&
-      !initialMessageSent.current
+      !userId ||
+      !initialMessage ||
+      initialMessage.trim() === "" ||
+      initialMessageSent.current
     ) {
-      initialMessageSent.current = true;
-      void handleSend(initialMessage);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialMessage]);
+
+    initialMessageSent.current = true;
+    void handleSend(initialMessage);
+  }, [initialMessage, userId]);
 
   const handleFinishCase = () => {
     setCaseFinished(true);
@@ -308,7 +260,6 @@ export function ChatInterface({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Message list */}
       <div
         ref={scrollRef}
         className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-4 py-6 sm:px-6"
@@ -344,14 +295,14 @@ export function ChatInterface({
                   gợi ý bên dưới.
                 </p>
                 <div className="mt-5 flex w-full flex-col gap-2">
-                  {SUGGESTIONS.map((s) => (
+                  {SUGGESTIONS.map((suggestion) => (
                     <button
-                      key={s}
+                      key={suggestion}
                       type="button"
-                      onClick={() => void handleSend(s)}
+                      onClick={() => void handleSend(suggestion)}
                       className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-left text-sm text-slate-700 transition hover:border-primary hover:bg-primary/5 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                     >
-                      {s}
+                      {suggestion}
                     </button>
                   ))}
                 </div>
@@ -374,20 +325,31 @@ export function ChatInterface({
           </div>
         )}
 
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} />
+        {messages.map((message) => (
+          <MessageBubble key={message.id} message={message} />
         ))}
 
         {isThinking && <ThinkingIndicator />}
       </div>
 
-      {/* Input area */}
       <div className="border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900 sm:px-6">
+        {(!freshSession || sessionId !== null) && (
+          <div className="mx-auto mb-2 flex max-w-3xl justify-end">
+            <button
+              type="button"
+              onClick={handleNewConversation}
+              aria-label="Bắt đầu cuộc trò chuyện mới"
+              className="text-xs font-medium text-primary transition hover:text-primary-700"
+            >
+              Bắt đầu cuộc trò chuyện mới
+            </button>
+          </div>
+        )}
         <div className="mx-auto flex max-w-3xl items-end gap-2">
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
             placeholder="Nhập câu hỏi nha khoa của bạn..."
@@ -397,7 +359,7 @@ export function ChatInterface({
           <button
             type="button"
             onClick={() => void handleSend(input)}
-            disabled={!input.trim() || isThinking}
+            disabled={!input.trim() || isThinking || !userId}
             aria-label="Gửi câu hỏi"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-white transition hover:bg-primary-700 disabled:opacity-50"
           >

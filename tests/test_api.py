@@ -47,6 +47,22 @@ class TestHealthEndpoint:
         assert isinstance(body["modules"], dict)
 
 
+class TestCorsPreflight:
+    def test_chat_preflight_allows_local_next_server_on_port_3001(self, test_client):
+        """The alternate local Next dev port can preflight chat requests."""
+        response = test_client.options(
+            "/api/chat",
+            headers={
+                "Origin": "http://localhost:3001",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == "http://localhost:3001"
+
+
 class TestChatEndpoint:
     def test_chat_basic(self, test_client, monkeypatch):
         """POST /api/chat with a valid message returns a structured answer."""
@@ -60,6 +76,173 @@ class TestChatEndpoint:
         assert body["session_id"]
         assert body["message_id"]
         assert "answer" in body and "content" in body
+
+    def test_chat_returns_source_backed_ferrule_answer(self, test_client, monkeypatch):
+        """A source-grounded ferrule explanation remains visible to the learner."""
+        from api.deps import services
+
+        answer = (
+            "Ferrule là mô răng lành còn lại quanh cổ răng sau điều trị nội nha. "
+            "Trụ chỉ giúp lưu giữ core, không làm chân răng khỏe hơn. "
+            "Nội dung này chỉ hỗ trợ học tập."
+        )
+        source = {
+            "title": "Phục hồi răng đã điều trị nội nha",
+            "source": "endodontic_restoration_ferrule_posts.md",
+            "snippet": answer,
+            "content": answer,
+        }
+
+        async def fake_run(_user_input, _context=None):
+            return {
+                "verified_answer": answer,
+                "formatted_answer": answer,
+                "confidence_score": 0.9,
+                "reasoning_steps": ["Đối chiếu với tài liệu ferrule."],
+                "citations": ["Nguồn do mô hình tự tạo"],
+                "warnings": [],
+                "retrieved_sources": [source],
+            }
+
+        monkeypatch.setattr(services.reasoning_workflow, "run", fake_run)
+        response = test_client.post(
+            "/api/chat",
+            json={
+                "message": "Trong học tập, ferrule là gì trước khi phục hồi răng?",
+                "user_id": "ferrule-student",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["answer"] == answer
+        assert body["content"] == answer
+        assert "Nguy cơ bịa đặt" not in body["answer"]
+        assert len(body["citations"]) == 1
+        assert body["citations"][0]["source"] == "Phục hồi răng đã điều trị nội nha"
+        assert body["citations"][0]["quote"] == answer
+
+    def test_chat_drops_citations_without_retrieved_sources(
+        self, test_client, monkeypatch
+    ):
+        """Chat never exposes citation labels without retrieved source objects."""
+        from api.deps import services
+
+        async def fake_run(_user_input, _context=None):
+            return {
+                "verified_answer": "Ferrule cần được đánh giá trong bối cảnh học tập.",
+                "formatted_answer": "Ferrule cần được đánh giá trong bối cảnh học tập.",
+                "confidence_score": 0.9,
+                "reasoning_steps": ["Không có tài liệu truy xuất."],
+                "citations": ["Nguồn do mô hình tự tạo"],
+                "warnings": [],
+                "retrieved_sources": [],
+            }
+
+        monkeypatch.setattr(services.reasoning_workflow, "run", fake_run)
+        response = test_client.post(
+            "/api/chat",
+            json={
+                "message": "Trong học tập, ferrule là gì?",
+                "user_id": "unretrieved-citation-student",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["citations"] == []
+
+    def test_chat_survives_memory_store_failure(self, test_client, monkeypatch):
+        """A valid chat remains available when learning-memory recall fails."""
+        from api.deps import services
+
+        _patch_workflow(monkeypatch)
+        recalled_user_ids = []
+
+        def record_then_raise(user_id):
+            recalled_user_ids.append(user_id)
+            raise RuntimeError("unavailable")
+
+        monkeypatch.setattr(services.memory_store, "recall_all", record_then_raise)
+
+        response = test_client.post(
+            "/api/chat", json={"message": "Implant là gì?", "user_id": "u1"}
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["session_id"]
+        assert body["message_id"]
+        assert "answer" in body and "content" in body
+        assert body["answer"] == body["content"]
+
+        history = test_client.get(
+            f"/api/chat/history/{body['session_id']}?user_id=u1"
+        )
+        assert history.status_code == 200
+        assert any(
+            message["id"] == body["message_id"]
+            and message["role"] == "assistant"
+            and message["content"] == body["content"]
+            for message in history.json()["messages"]
+        )
+        assert recalled_user_ids == ["u1"]
+
+    def test_chat_survives_learning_memory_write_failure(
+        self, test_client, monkeypatch
+    ):
+        """A failed explicit-learning write does not make chat unavailable."""
+        from api.deps import services
+
+        _patch_workflow(monkeypatch)
+        store_calls = []
+
+        def record_then_raise(user_id, memory_type, key, value, confidence=1.0):
+            store_calls.append((user_id, memory_type, key, value, confidence))
+            raise RuntimeError("unavailable")
+
+        monkeypatch.setattr(services.memory_store, "store", record_then_raise)
+
+        response = test_client.post(
+            "/api/chat",
+            json={
+                "message": "Tôi muốn học implant để chuẩn bị thi.",
+                "user_id": "u1",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["session_id"]
+        assert body["message_id"]
+        assert "answer" in body and "content" in body
+        assert body["answer"] == body["content"]
+
+        history = test_client.get(
+            f"/api/chat/history/{body['session_id']}?user_id=u1"
+        )
+        assert history.status_code == 200
+        assert any(
+            message["id"] == body["message_id"]
+            and message["role"] == "assistant"
+            and message["content"] == body["content"]
+            for message in history.json()["messages"]
+        )
+        assert store_calls == [
+            (
+                "u1",
+                "learning_goal",
+                "goal:Implant",
+                {"topic": "Implant", "summary": "Mục tiêu học Implant"},
+                1.0,
+            )
+        ]
+
+    def test_chat_requires_user_id(self, test_client):
+        """POST /api/chat rejects a request without an owning user id."""
+        resp = test_client.post(
+            "/api/chat", json={"message": "Triệu chứng nhồi máu cơ tim?"}
+        )
+        assert resp.status_code == 422
 
     def test_chat_blocked_input(self, test_client, monkeypatch):
         """POST /api/chat with an emergency input is blocked by pre-checks."""
@@ -98,6 +281,158 @@ class TestChatEndpoint:
         )
         assert resp2.status_code == 200
         assert resp2.json()["session_id"] == session_id
+
+    def test_chat_rejects_another_users_session(self, test_client, monkeypatch):
+        """A supplied session id cannot be reused under another user id."""
+        _patch_workflow(monkeypatch)
+        created = test_client.post(
+            "/api/chat", json={"message": "Tôi muốn học implant", "user_id": "owner"}
+        )
+        session_id = created.json()["session_id"]
+
+        resp = test_client.post(
+            "/api/chat",
+            json={
+                "message": "Hãy giải thích implant từng bước",
+                "user_id": "other-user",
+                "session_id": session_id,
+            },
+        )
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Session not found"
+
+    def test_streaming_chat_rejects_another_users_session(
+        self, test_client, monkeypatch
+    ):
+        """A stream validates session ownership before SSE headers are sent."""
+        _patch_workflow(monkeypatch)
+        created = test_client.post(
+            "/api/chat", json={"message": "Tôi muốn học implant", "user_id": "u1"}
+        )
+        session_id = created.json()["session_id"]
+
+        response = test_client.post(
+            "/api/chat",
+            json={
+                "message": "Hãy giải thích implant từng bước",
+                "user_id": "u2",
+                "session_id": session_id,
+                "stream": True,
+            },
+        )
+
+        assert response.status_code == 404
+        assert response.headers["content-type"].startswith("application/json")
+        assert response.json()["detail"] == "Session not found"
+
+    def test_streaming_chat_rejects_unknown_session(self, test_client):
+        """A stream hides an unknown session behind the generic 404 response."""
+        response = test_client.post(
+            "/api/chat",
+            json={
+                "message": "Hãy giải thích implant từng bước",
+                "user_id": "u1",
+                "session_id": "session-does-not-exist",
+                "stream": True,
+            },
+        )
+
+        assert response.status_code == 404
+        assert response.headers["content-type"].startswith("application/json")
+        assert response.json()["detail"] == "Session not found"
+
+    def test_chat_history_is_scoped_to_owner(self, test_client, monkeypatch):
+        """History requires the owning user and hides non-owned sessions."""
+        _patch_workflow(monkeypatch)
+        created = test_client.post(
+            "/api/chat", json={"message": "Tôi muốn học implant", "user_id": "owner"}
+        )
+        session_id = created.json()["session_id"]
+
+        own = test_client.get(f"/api/chat/history/{session_id}?user_id=owner")
+        other = test_client.get(f"/api/chat/history/{session_id}?user_id=other-user")
+        missing_user = test_client.get(f"/api/chat/history/{session_id}")
+
+        assert own.status_code == 200
+        assert other.status_code == 404
+        assert other.json()["detail"] == "Session not found"
+        assert missing_user.status_code == 422
+
+
+class TestMemoryEndpoints:
+    def test_memory_endpoints_are_isolated_by_owner(self, test_client):
+        """Memory APIs never expose or delete another user's entries."""
+        from api.deps import services
+
+        retained = services.memory_store.store(
+            "user-a",
+            "learning_goal",
+            "goal:Implant",
+            {"topic": "Implant", "summary": "Học implant"},
+        )
+        removable = services.memory_store.store(
+            "user-a",
+            "preference",
+            "preference:Implant:explanation_style",
+            {"topic": "Implant", "name": "explanation_style", "summary": "từng bước"},
+        )
+        other_entry = services.memory_store.store(
+            "user-b",
+            "learning_goal",
+            "goal:Nha chu",
+            {"topic": "Nha chu", "summary": "Học nha chu"},
+        )
+
+        missing_user = test_client.get("/api/memories")
+        user_a_list = test_client.get("/api/memories", params={"user_id": "user-a"})
+        user_b_list = test_client.get("/api/memories", params={"user_id": "user-b"})
+
+        assert missing_user.status_code == 422
+        assert user_a_list.status_code == 200
+        assert {entry["id"] for entry in user_a_list.json()["memories"]} == {
+            retained.id,
+            removable.id,
+        }
+        assert all(
+            isinstance(entry["value"], dict)
+            and "T" in entry["created_at"]
+            and "T" in entry["updated_at"]
+            for entry in user_a_list.json()["memories"]
+        )
+        assert [entry["id"] for entry in user_b_list.json()["memories"]] == [
+            other_entry.id
+        ]
+
+        cross_owner = test_client.delete(
+            f"/api/memories/{other_entry.id}", params={"user_id": "user-a"}
+        )
+        missing = test_client.delete(
+            "/api/memories/999999", params={"user_id": "user-a"}
+        )
+        own_delete = test_client.delete(
+            f"/api/memories/{removable.id}", params={"user_id": "user-a"}
+        )
+
+        assert cross_owner.status_code == 404
+        assert cross_owner.json()["detail"] == "Memory not found"
+        assert missing.status_code == 404
+        assert missing.json()["detail"] == "Memory not found"
+        assert own_delete.status_code == 200
+        assert own_delete.json() == {"deleted": 1}
+
+        delete_all = test_client.delete("/api/memories", params={"user_id": "user-a"})
+        assert delete_all.status_code == 200
+        assert delete_all.json() == {"deleted": 1}
+        assert test_client.get("/api/memories", params={"user_id": "user-a"}).json() == {
+            "memories": []
+        }
+        assert [
+            entry["id"]
+            for entry in test_client.get(
+                "/api/memories", params={"user_id": "user-b"}
+            ).json()["memories"]
+        ] == [other_entry.id]
 
 
 class TestDocumentEndpoints:
@@ -215,3 +550,71 @@ class TestQuizEndpoints:
             json={"quiz_id": "quiz_missing", "user_id": "q2", "answers": {}},
         )
         assert missing.status_code == 404
+
+    def test_incorrect_implant_quiz_stores_weak_area(self, test_client, monkeypatch):
+        """An incorrect dental quiz records a score-derived weak area."""
+        monkeypatch.setattr("api.quiz._QUIZ_LLM_AVAILABLE", False)
+        generated = test_client.post(
+            "/api/quiz/generate",
+            json={"topic": "Implant", "difficulty": "easy", "count": 2, "user_id": "u1"},
+        )
+        quiz = generated.json()
+        response = test_client.post(
+            "/api/quiz/submit",
+            json={"quiz_id": quiz["quiz_id"], "user_id": "u1", "answers": {}},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        memories = test_client.get("/api/memories", params={"user_id": "u1"}).json()[
+            "memories"
+        ]
+        assert len(memories) == 1
+        memory = memories[0]
+        assert memory["memory_type"] == "weak_area"
+        assert memory["key"] == "Implant"
+        assert memory["value"] == {
+            "topic": "Implant",
+            "incorrect_count": result["total"],
+            "last_score": result["score"],
+        }
+        assert memory["confidence"] == 1.0
+
+    def test_correct_implant_quiz_does_not_store_weak_area(self, test_client):
+        """A fully correct dental quiz does not create a weak-area memory."""
+        from api.deps import services
+
+        services.quiz_store["quiz-implant"] = {
+            "topic": "Implant",
+            "difficulty": "easy",
+            "questions": [{"id": "q1", "correct_answer": "B", "explanation": ""}],
+        }
+
+        response = test_client.post(
+            "/api/quiz/submit",
+            json={"quiz_id": "quiz-implant", "user_id": "u1", "answers": {"q1": "B"}},
+        )
+
+        assert response.status_code == 200
+        assert services.memory_store.list_for_user("u1") == []
+
+    def test_incorrect_cardiology_quiz_does_not_store_memory(
+        self, test_client, monkeypatch
+    ):
+        """An incorrect non-dental quiz remains successful without memory writes."""
+        monkeypatch.setattr("api.quiz._QUIZ_LLM_AVAILABLE", False)
+        generated = test_client.post(
+            "/api/quiz/generate",
+            json={"topic": "Cardiology", "difficulty": "easy", "count": 2, "user_id": "u1"},
+        )
+        quiz = generated.json()
+        response = test_client.post(
+            "/api/quiz/submit",
+            json={"quiz_id": quiz["quiz_id"], "user_id": "u1", "answers": {}},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["total"] == len(quiz["questions"])
+        assert test_client.get("/api/memories", params={"user_id": "u1"}).json() == {
+            "memories": []
+        }
