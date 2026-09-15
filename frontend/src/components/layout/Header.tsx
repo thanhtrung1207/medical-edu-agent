@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Moon, Stethoscope, Sun, Settings } from "lucide-react";
+import { Menu, Moon, Settings, Stethoscope, Sun } from "lucide-react";
 import { SettingsModal } from "@/components/case/SettingsModal";
 
-export function Header() {
+interface HeaderProps {
+  onToggleDrawer?: () => void;
+}
+
+export function Header({ onToggleDrawer }: HeaderProps) {
   const [dark, setDark] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -27,18 +31,24 @@ export function Header() {
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-center gap-2 md:hidden">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onToggleDrawer}
+          aria-label="Mở menu điều hướng"
+          aria-expanded={false}
+          aria-controls="nav-drawer"
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 md:hidden"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white md:hidden">
           <Stethoscope className="h-4 w-4" />
         </div>
         <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
-          Phục hình AI
+          UniDent
         </span>
       </div>
-
-      <h1 className="hidden text-sm font-semibold text-slate-700 dark:text-slate-200 md:block">
-        Trợ lý Phục hình
-      </h1>
 
       <div className="flex items-center gap-1">
         <button
@@ -46,7 +56,7 @@ export function Header() {
           onClick={() => setSettingsOpen(true)}
           title="Quản lý dữ liệu học tập"
           aria-label="Quản lý dữ liệu học tập"
-          className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           <Settings className="h-4 w-4" />
         </button>
@@ -54,7 +64,7 @@ export function Header() {
           type="button"
           onClick={toggleTheme}
           aria-label={dark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
-          className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </button>
