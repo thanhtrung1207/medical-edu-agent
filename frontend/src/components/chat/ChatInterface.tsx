@@ -400,7 +400,7 @@ export function ChatInterface({
                   Sẵn sàng phân tích case
                 </p>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  Điền thông tin bệnh nhân ở form bên cạnh và nhấn Gửi case để
+                  Điền thông tin bệnh nhân trong form case rồi nhấn Gửi case để
                   phân tích
                 </p>
                 <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">

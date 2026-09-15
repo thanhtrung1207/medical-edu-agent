@@ -251,12 +251,14 @@ describe("ChatInterface branding & responsive", () => {
     expect(screen.queryByText("UniDent")).toBeNull();
   });
 
-  it("renders spatially neutral guidance (no 'panel bên trái')", async () => {
+  it("renders spatially neutral guidance (no spatial references)", async () => {
     // showSuggestions=false triggers the case-ready guidance
     render(<ChatInterface freshSession showSuggestions={false} />);
     const guidance = screen.getByText(/Điền thông tin bệnh nhân/);
     expect(guidance.textContent).not.toContain("panel bên trái");
     expect(guidance.textContent).not.toContain("bên trái");
+    expect(guidance.textContent).not.toContain("form bên cạnh");
+    expect(guidance.textContent).toContain("trong form case");
   });
 
   it("suggestion buttons have min-h-[44px] class", async () => {
