@@ -21,7 +21,7 @@ function ToothButton({
     <button
       type="button"
       onClick={() => onToggle(tooth)}
-      className={`relative flex h-7 w-7 items-center justify-center rounded-md border text-[10px] font-bold transition-all duration-150 ${
+      className={`relative flex h-9 w-9 md:h-7 md:w-7 items-center justify-center rounded-md border text-[10px] font-bold transition-all duration-150 ${
         isSelected
           ? "border-primary bg-primary text-white"
           : "border-borderSoft bg-cream text-slate-600 hover:border-primary hover:scale-105"
@@ -39,47 +39,32 @@ function ToothButton({
 
 function QuadrantRow({
   label,
-  rightTeeth,
-  leftTeeth,
+  teeth,
   selectedTeeth,
   onToggle,
 }: {
   label: string;
-  rightTeeth: number[];
-  leftTeeth: number[];
+  teeth: number[];
   selectedTeeth: number[];
   onToggle: (tooth: number) => void;
 }) {
   return (
-    <div className="space-y-1">
-      <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+    <div data-quadrant className="space-y-1">
+      <span
+        data-quadrant-label
+        className="text-[9px] font-semibold uppercase tracking-wider text-slate-400"
+      >
         {label}
       </span>
-      <div className="flex items-center gap-1">
-        {/* Right quadrant */}
-        <div className="flex gap-0.5">
-          {rightTeeth.map((tooth) => (
-            <ToothButton
-              key={tooth}
-              tooth={tooth}
-              isSelected={selectedTeeth.includes(tooth)}
-              onToggle={onToggle}
-            />
-          ))}
-        </div>
-        {/* Divider */}
-        <div className="mx-0.5 h-7 w-px bg-borderSoft" />
-        {/* Left quadrant */}
-        <div className="flex gap-0.5">
-          {leftTeeth.map((tooth) => (
-            <ToothButton
-              key={tooth}
-              tooth={tooth}
-              isSelected={selectedTeeth.includes(tooth)}
-              onToggle={onToggle}
-            />
-          ))}
-        </div>
+      <div className="flex flex-wrap gap-0.5 md:gap-1">
+        {teeth.map((tooth) => (
+          <ToothButton
+            key={tooth}
+            tooth={tooth}
+            isSelected={selectedTeeth.includes(tooth)}
+            onToggle={onToggle}
+          />
+        ))}
       </div>
     </div>
   );
@@ -96,7 +81,7 @@ export function ToothChart({ selectedTeeth, onToggle, onClear }: ToothChartProps
           <button
             type="button"
             onClick={onClear}
-            className="flex items-center gap-1 text-[10px] font-medium text-primary hover:text-primary-700"
+            className="flex h-11 items-center gap-1 px-2 text-[10px] font-medium text-primary hover:text-primary-700"
           >
             <span>Xóa chọn</span>
             <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-primary text-[8px] leading-none">
@@ -108,17 +93,29 @@ export function ToothChart({ selectedTeeth, onToggle, onClear }: ToothChartProps
 
       <div className="rounded-lg border border-borderSoft bg-cream/50 p-2.5 space-y-2">
         <QuadrantRow
-          label="HÀM TRÊN"
-          rightTeeth={UPPER_RIGHT}
-          leftTeeth={UPPER_LEFT}
+          label="TRÊN PHẢI"
+          teeth={UPPER_RIGHT}
           selectedTeeth={selectedTeeth}
           onToggle={onToggle}
         />
         <div className="h-px bg-borderSoft" />
         <QuadrantRow
-          label="HÀM DƯỚI"
-          rightTeeth={LOWER_RIGHT}
-          leftTeeth={LOWER_LEFT}
+          label="TRÊN TRÁI"
+          teeth={UPPER_LEFT}
+          selectedTeeth={selectedTeeth}
+          onToggle={onToggle}
+        />
+        <div className="h-px bg-borderSoft" />
+        <QuadrantRow
+          label="DƯỚI PHẢI"
+          teeth={LOWER_RIGHT}
+          selectedTeeth={selectedTeeth}
+          onToggle={onToggle}
+        />
+        <div className="h-px bg-borderSoft" />
+        <QuadrantRow
+          label="DƯỚI TRÁI"
+          teeth={LOWER_LEFT}
           selectedTeeth={selectedTeeth}
           onToggle={onToggle}
         />
