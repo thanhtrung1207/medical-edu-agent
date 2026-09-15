@@ -61,6 +61,16 @@ class ChatHistoryResponse(BaseModel):
     topic: Optional[str] = None
 
 
+class ChatSessionSummary(BaseModel):
+    """A session listing entry for ``GET /api/chat/sessions``."""
+
+    session_id: str
+    topic: Optional[str] = None
+    created_at: str
+    last_active: str
+    message_count: int = 0
+
+
 # --------------------------------------------------------------------------- #
 # Memories
 # --------------------------------------------------------------------------- #

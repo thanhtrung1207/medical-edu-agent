@@ -109,6 +109,27 @@ export async function getChatHistory(
   return (await res.json()) as ChatHistoryResponse;
 }
 
+export interface ChatSessionSummary {
+  session_id: string;
+  topic: string | null;
+  created_at: string;
+  last_active: string;
+  message_count: number;
+}
+
+export async function getChatSessions(
+  userId: string,
+): Promise<ChatSessionSummary[]> {
+  if (USE_MOCK_API) return [];
+
+  const query = new URLSearchParams({ user_id: userId });
+  const res = await fetch(
+    `${config.apiBaseUrl}/api/chat/sessions?${query.toString()}`,
+  );
+  if (!res.ok) throw new Error(`Chat sessions request failed: ${res.status}`);
+  return (await res.json()) as ChatSessionSummary[];
+}
+
 export interface LearningMemory {
   id: number;
   memory_type: string;

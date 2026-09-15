@@ -7,14 +7,16 @@ import {
   Clock,
   FileText,
   ListChecks,
-  PlusCircle,
+  MessageSquare,
   Stethoscope,
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SessionList } from "./SessionList";
 
 const NAV = [
   { href: "/", label: "Ca lâm sàng", icon: Stethoscope },
+  { href: "/chat", label: "Trò chuyện", icon: MessageSquare },
   { href: "/history", label: "Lịch sử", icon: Clock },
   { href: "/quiz", label: "Trắc nghiệm", icon: ListChecks },
   { href: "/progress", label: "Tiến độ", icon: TrendingUp },
@@ -82,24 +84,8 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* Case history placeholder */}
-      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-3">
-        <div className="mb-2 flex items-center justify-between px-1">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Gần đây
-          </span>
-          <button
-            type="button"
-            aria-label="Ca lâm sàng mới"
-            className="text-slate-400 hover:text-primary"
-          >
-            <PlusCircle className="h-4 w-4" />
-          </button>
-        </div>
-        <p className="px-2 py-4 text-center text-sm text-slate-400">
-          Chưa có case nào
-        </p>
-      </div>
+      {/* Recent chat sessions */}
+      <SessionList />
     </aside>
   );
 }

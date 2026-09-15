@@ -1,13 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Send, Stethoscope } from "lucide-react";
+import {
+  AlertTriangle,
+  RotateCw,
+  Send,
+  Stethoscope,
+  X,
+} from "lucide-react";
 import type { Message } from "@/lib/types";
 import { getChatHistory, sendMessage } from "@/lib/api";
 import {
   clearActiveSessionId,
   getActiveSessionId,
   getOrCreateUserId,
+  notifySessionUpdated,
   setActiveSessionId,
 } from "@/lib/client-identity";
 import { generateId } from "@/lib/utils";
@@ -40,6 +47,12 @@ interface ChatInterfaceProps {
   onFinishCase?: (summary: string) => void;
   /** Skip the stored active session and start a fresh conversation (case screen). */
   freshSession?: boolean;
+  /**
+   * Session opened externally (e.g. `/chat?session=...`). Takes precedence
+   * over the stored active session; ignored when `freshSession` is true.
+   * Changing it switches the conversation in place.
+   */
+  externalSessionId?: string;
 }
 
 export function ChatInterface({
@@ -50,6 +63,7 @@ export function ChatInterface({
   onSessionCreated,
   onFinishCase,
   freshSession,
+  externalSessionId,
 }: ChatInterfaceProps = {}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -64,6 +78,8 @@ export function ChatInterface({
   const finishCasePendingRef = useRef(false);
   const conversationGenerationRef = useRef(0);
   const [caseFinished, setCaseFinished] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyRetryCount, setHistoryRetryCount] = useState(0);
 
   const scrollToBottom = () => {
     scrollRef.current?.scrollTo({
@@ -78,13 +94,30 @@ export function ChatInterface({
 
   useEffect(() => {
     const id = getOrCreateUserId();
-    const activeSessionId = freshSession ? null : getActiveSessionId();
+    // freshSession (case screen) always starts blank and ignores any
+    // externally opened session; otherwise the external session wins over
+    // the one stored in localStorage.
+    const activeSessionId = freshSession
+      ? null
+      : externalSessionId ?? getActiveSessionId();
 
+    // Persist the externally opened session so it becomes the active one.
+    if (externalSessionId) {
+      setActiveSessionId(externalSessionId);
+    }
+
+    // A session switch must cancel any in-flight request and reset the view.
+    conversationGenerationRef.current += 1;
+    finishCasePendingRef.current = false;
     storedSessionId.current = activeSessionId;
     historyLoaded.current = false;
     setUserId(id);
     setSessionId(activeSessionId);
-  }, [freshSession]);
+    setMessages([]);
+    setIsThinking(false);
+    setCaseFinished(false);
+    setHistoryError(null);
+  }, [freshSession, externalSessionId]);
 
   useEffect(() => {
     if (
@@ -101,7 +134,9 @@ export function ChatInterface({
 
     getChatHistory(sessionId, userId)
       .then((data) => {
-        if (cancelled || data.messages.length === 0) return;
+        if (cancelled) return;
+        setHistoryError(null);
+        if (data.messages.length === 0) return;
         const restoredMessages: Message[] = data.messages.map((message) => ({
           id: message.id,
           role: message.role === "assistant" ? "assistant" : "user",
@@ -121,12 +156,26 @@ export function ChatInterface({
             : restoredMessages;
         });
       })
-      .catch(() => {});
+      .catch(() => {
+        if (cancelled) return;
+        setHistoryError(
+          "Không thể tải lịch sử trò chuyện. Vui lòng thử lại.",
+        );
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [sessionId, userId]);
+  }, [sessionId, userId, historyRetryCount]);
+
+  const handleRetryHistory = () => {
+    historyLoaded.current = false;
+    setHistoryRetryCount((count) => count + 1);
+  };
+
+  const handleDismissHistoryError = () => {
+    setHistoryError(null);
+  };
 
   const handleSend = async (text: string) => {
     const trimmed = text.trim();
@@ -185,6 +234,9 @@ export function ChatInterface({
           setSessionId(reply.session_id);
           onSessionCreated?.(reply.session_id);
         }
+        // Keep the sidebar session list in sync (new session, topic,
+        // message count, ...).
+        notifySessionUpdated();
       }
 
       if (finishCasePendingRef.current && onFinishCase) {
@@ -223,6 +275,9 @@ export function ChatInterface({
     setSessionId(null);
     setMessages([]);
     setIsThinking(false);
+    setHistoryError(null);
+    // Let the sidebar session list reflect the new empty state.
+    notifySessionUpdated();
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -264,6 +319,31 @@ export function ChatInterface({
         ref={scrollRef}
         className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-4 py-6 sm:px-6"
       >
+        {historyError && (
+          <div
+            role="alert"
+            className="sticky top-0 z-10 flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
+          >
+            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <p className="min-w-0 flex-1">{historyError}</p>
+            <button
+              type="button"
+              onClick={handleRetryHistory}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-red-300 bg-white px-2.5 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-100 dark:border-red-700 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-900/40"
+            >
+              <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+              Thử lại
+            </button>
+            <button
+              type="button"
+              onClick={handleDismissHistoryError}
+              aria-label="Đóng thông báo lỗi"
+              className="shrink-0 rounded-lg p-1.5 transition hover:bg-red-100 dark:hover:bg-red-900/40"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        )}
         {showFinishButton && (
           <div className="sticky top-0 z-10 flex justify-end">
             <button

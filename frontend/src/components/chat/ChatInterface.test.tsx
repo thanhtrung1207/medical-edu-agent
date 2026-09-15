@@ -158,3 +158,81 @@ describe("ChatInterface identity", () => {
     expect(localStorage.getItem("chatSessionId")).toBeNull();
   });
 });
+
+describe("ChatInterface history failure", () => {
+  it("shows a dismissible error banner and still allows sending messages", async () => {
+    vi.mocked(getChatHistory).mockRejectedValueOnce(
+      new Error("Chat history request failed: 500"),
+    );
+    vi.mocked(sendMessage).mockResolvedValueOnce({
+      content: "Trả lời cho câu hỏi mới.",
+      citations: [],
+      warnings: [],
+      reasoning_steps: [],
+      session_id: "session-1",
+    });
+
+    render(<ChatInterface />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "Không thể tải lịch sử trò chuyện. Vui lòng thử lại.",
+    );
+
+    // Non-blocking: the user can still send a new message while the banner shows.
+    fireEvent.change(screen.getByRole("textbox", { name: "Ô nhập câu hỏi" }), {
+      target: { value: "Câu hỏi mới" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Gửi câu hỏi" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        "Câu hỏi mới",
+        "user-uuid",
+        "session-1",
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Trả lời cho câu hỏi mới.")).toBeDefined();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Đóng thông báo lỗi" }),
+    );
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("retries the history load when the user clicks retry", async () => {
+    vi.mocked(getChatHistory)
+      .mockRejectedValueOnce(new Error("Chat history request failed: 500"))
+      .mockResolvedValueOnce({
+        messages: [
+          {
+            id: "history-message-1",
+            role: "assistant",
+            content: "Nội dung lịch sử cần được xóa",
+            metadata: {},
+            created_at: "2025-01-01T00:00:00.000Z",
+          },
+        ],
+        topic: null,
+      });
+
+    render(<ChatInterface />);
+
+    await screen.findByRole("alert");
+    expect(getChatHistory).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Thử lại" }));
+
+    await waitFor(() => {
+      expect(getChatHistory).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Nội dung lịch sử cần được xóa")).toBeDefined();
+    });
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

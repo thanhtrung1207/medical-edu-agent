@@ -223,6 +223,27 @@ class SessionManager:
         logger.debug("Listed %d sessions for user %s", len(sessions), user_id)
         return sessions
 
+    def count_messages_by_session(self, session_ids: list[str]) -> dict[str, int]:
+        """Count messages for each of the given sessions in a single query.
+
+        Args:
+            session_ids: Session identifiers to count.
+
+        Returns:
+            A dict mapping each session id that has messages to its message
+            count. Sessions without messages are simply absent.
+        """
+        if not session_ids:
+            return {}
+        placeholders = ",".join("?" for _ in session_ids)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT session_id, COUNT(*) AS message_count FROM messages "
+                f"WHERE session_id IN ({placeholders}) GROUP BY session_id",
+                session_ids,
+            ).fetchall()
+        return {row["session_id"]: row["message_count"] for row in rows}
+
     def add_message(
         self,
         session_id: str,

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -29,6 +29,7 @@ from .models import (
     ChatHistoryResponse,
     ChatRequest,
     ChatResponse,
+    ChatSessionSummary,
     Citation,
 )
 
@@ -266,3 +267,33 @@ def chat_history(
     if session is None or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
     return ChatHistoryResponse(messages=session.messages, topic=session.topic)
+
+
+@router.get("/chat/sessions", response_model=List[ChatSessionSummary])
+def chat_sessions(
+    user_id: Optional[str] = Query(None, max_length=128),
+    limit: int = Query(20, ge=1, le=100),
+    svc: Services = Depends(get_services),
+):
+    """List the requesting user's recent chat sessions, newest first.
+
+    Returns an empty array when the user has no sessions yet. Sessions are
+    always scoped to the requesting ``user_id`` and never expose messages.
+    """
+    if not user_id or not user_id.strip():
+        raise HTTPException(status_code=400, detail="user_id is required")
+
+    sessions = svc.session_manager.list_sessions(user_id, limit=limit)
+    message_counts = svc.session_manager.count_messages_by_session(
+        [session.id for session in sessions]
+    )
+    return [
+        ChatSessionSummary(
+            session_id=session.id,
+            topic=session.topic,
+            created_at=session.created_at.isoformat(),
+            last_active=session.last_active.isoformat(),
+            message_count=message_counts.get(session.id, 0),
+        )
+        for session in sessions
+    ]

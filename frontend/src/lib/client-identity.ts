@@ -21,3 +21,15 @@ export function setActiveSessionId(sessionId: string): void {
 export function clearActiveSessionId(): void {
   localStorage.removeItem(SESSION_ID_KEY);
 }
+
+/**
+ * Custom DOM event broadcast whenever chat sessions change (created,
+ * updated, or reset) so detached consumers — e.g. the sidebar session list —
+ * can refetch without prop drilling or a React context.
+ */
+export const SESSION_UPDATED_EVENT = "session-updated";
+
+/** Notify listeners that the chat session list may have changed. */
+export function notifySessionUpdated(): void {
+  window.dispatchEvent(new CustomEvent(SESSION_UPDATED_EVENT));
+}

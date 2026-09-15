@@ -359,6 +359,51 @@ class TestChatEndpoint:
         assert other.json()["detail"] == "Session not found"
         assert missing_user.status_code == 422
 
+    def test_chat_sessions_lists_only_owned_sessions(self, test_client, monkeypatch):
+        """GET /api/chat/sessions lists the owner's sessions with counts."""
+        _patch_workflow(monkeypatch)
+        created = test_client.post(
+            "/api/chat", json={"message": "Tôi muốn học implant", "user_id": "owner"}
+        )
+        session_id = created.json()["session_id"]
+
+        listed = test_client.get("/api/chat/sessions", params={"user_id": "owner"})
+
+        assert listed.status_code == 200
+        sessions = listed.json()
+        assert isinstance(sessions, list)
+        assert len(sessions) == 1
+        entry = sessions[0]
+        assert entry["session_id"] == session_id
+        assert set(entry) == {
+            "session_id",
+            "topic",
+            "created_at",
+            "last_active",
+            "message_count",
+        }
+        # One user message + one assistant message from the chat turn.
+        assert entry["message_count"] == 2
+        assert "T" in entry["created_at"]
+        assert "T" in entry["last_active"]
+
+        # Another user sees none of the owner's sessions.
+        other = test_client.get(
+            "/api/chat/sessions", params={"user_id": "other-user"}
+        )
+        assert other.status_code == 200
+        assert other.json() == []
+
+    def test_chat_sessions_requires_user_id(self, test_client):
+        """GET /api/chat/sessions rejects a missing or blank user id."""
+        missing = test_client.get("/api/chat/sessions")
+        blank = test_client.get("/api/chat/sessions", params={"user_id": "   "})
+
+        assert missing.status_code == 400
+        assert missing.json()["detail"] == "user_id is required"
+        assert blank.status_code == 400
+        assert blank.json()["detail"] == "user_id is required"
+
 
 class TestMemoryEndpoints:
     def test_memory_endpoints_are_isolated_by_owner(self, test_client):
