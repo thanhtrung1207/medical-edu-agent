@@ -189,17 +189,10 @@ function DrawerDialog({ onClose }: { onClose: () => void }) {
         </nav>
 
         {/* Recent chat sessions — mounted only while the drawer is open.
-            Every button inside SessionList navigates (new chat or open
-            session), so close on button presses; the list refetches the next
-            time the drawer opens. */}
-        <div
-          className="flex min-h-0 flex-1 flex-col"
-          onClickCapture={(event) => {
-            if ((event.target as HTMLElement).closest("button")) onClose();
-          }}
-        >
-          <SessionList />
-        </div>
+            SessionList reports actual navigation (open session / new
+            conversation) through onNavigate; non-navigational controls such
+            as the failed-load retry button stay usable without closing. */}
+        <SessionList onNavigate={onClose} />
       </div>
     </div>
   );

@@ -46,7 +46,17 @@ function formatRelativeTime(isoTimestamp: string): string {
  * and refetches whenever a `session-updated` DOM event is dispatched by the
  * chat interface (new session created, topic updated, or reset).
  */
-export function SessionList() {
+interface SessionListProps {
+  /**
+   * Notified when SessionList initiates navigation — opening a session or
+   * starting a new conversation — so container surfaces such as the AppShell
+   * drawer can close themselves. Non-navigational actions (e.g. the
+   * failed-load retry) do not fire it.
+   */
+  onNavigate?: () => void;
+}
+
+export function SessionList({ onNavigate }: SessionListProps) {
   const router = useRouter();
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,10 +106,12 @@ export function SessionList() {
     // The nonce forces ChatInterface to remount, so a fresh chat starts even
     // when the user is already on /chat.
     router.push(`/chat?new=${Date.now()}`);
+    onNavigate?.();
   };
 
   const handleOpenSession = (sessionId: string) => {
     router.push(`/chat?session=${encodeURIComponent(sessionId)}`);
+    onNavigate?.();
   };
 
   return (
