@@ -287,12 +287,13 @@ export function ChatInterface({
     }
   };
 
-  const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(event.target.value);
-    const el = event.target;
+  // Auto-grow: recompute height whenever input text changes (typing or clearing).
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  };
+  }, [input]);
 
   useEffect(() => {
     if (
@@ -436,7 +437,7 @@ export function ChatInterface({
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={handleInputChange}
+            onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
             placeholder="Nhập câu hỏi nha khoa của bạn..."

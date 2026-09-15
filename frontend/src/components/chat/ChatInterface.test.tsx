@@ -8,7 +8,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Mock } from "vitest";
 import { getChatHistory, sendMessage } from "@/lib/api";
 import { ChatInterface } from "./ChatInterface";
 
@@ -334,6 +333,51 @@ describe("ChatInterface textarea auto-grow", () => {
 
     expect(styleSpy).toContain("auto");
     expect(styleSpy).toContain("80px");
+  });
+
+  it("shrinks textarea height after send clears input", async () => {
+    vi.mocked(sendMessage).mockResolvedValueOnce({
+      content: "Reply",
+      citations: [],
+      warnings: [],
+      reasoning_steps: [],
+      session_id: "s1",
+    });
+
+    render(<ChatInterface freshSession />);
+    const textarea = screen.getByRole("textbox", {
+      name: "Ô nhập câu hỏi",
+    }) as HTMLTextAreaElement;
+
+    let currentScrollHeight = 200;
+    Object.defineProperty(textarea.style, "height", {
+      configurable: true,
+      get() {
+        return textarea.getAttribute("data-style-height") ?? "";
+      },
+      set(v: string) {
+        textarea.setAttribute("data-style-height", v);
+      },
+    });
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      get: () => currentScrollHeight,
+    });
+
+    // Grow with long text
+    fireEvent.change(textarea, { target: { value: "very long input text" } });
+    expect(textarea.getAttribute("data-style-height")).toBe("160px");
+
+    // After send, input clears → textarea should shrink to base height
+    currentScrollHeight = 44;
+    fireEvent.click(screen.getByRole("button", { name: "Gửi câu hỏi" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalled();
+    });
+
+    // Height must have recomputed to the small base height, not stay at 160px
+    expect(textarea.getAttribute("data-style-height")).toBe("44px");
   });
 });
 
