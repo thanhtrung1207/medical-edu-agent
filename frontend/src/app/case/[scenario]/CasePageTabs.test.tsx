@@ -53,6 +53,21 @@ vi.mock("@/components/case/CaseChatPanel", () => ({
 
 import CasePage from "./page";
 
+// jsdom does not implement window.matchMedia, which CasePage reads on mount
+// to switch between the mobile tablist view and the md+ split view.
+function stubMatchMedia(matches: boolean) {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
+}
+
 const formTab = () => screen.getByRole("tab", { name: "Thông tin ca" });
 const chatTab = () => screen.getByRole("tab", { name: "Trợ lý AI" });
 const panelForm = () => document.getElementById("panel-form") as HTMLElement;
@@ -69,6 +84,9 @@ describe("CasePage mobile tabs", () => {
     navigation.params = { scenario: "fracture" };
     navigation.push.mockClear();
     navigation.replace.mockClear();
+    // Default to the mobile view: the SSR markup renders the tablist because
+    // the md+ state is only corrected after hydration.
+    stubMatchMedia(false);
   });
 
   afterEach(cleanup);
@@ -256,5 +274,59 @@ describe("CasePage mobile tabs", () => {
     // Chat pane fills the remaining width.
     expect(panelChat().className).toContain("flex-1");
     expect(panelChat().className).toContain("min-w-0");
+  });
+
+  it("queries the md breakpoint (768px) to switch tablist semantics", () => {
+    render(<CasePage />);
+
+    expect(window.matchMedia).toHaveBeenCalledWith("(min-width: 768px)");
+  });
+});
+
+describe("CasePage md+ split semantics", () => {
+  beforeEach(() => {
+    navigation.params = { scenario: "fracture" };
+    navigation.push.mockClear();
+    navigation.replace.mockClear();
+    stubMatchMedia(true);
+  });
+
+  afterEach(cleanup);
+
+  it("drops tab semantics at md+ so the side-by-side panels reference no hidden tabs", () => {
+    render(<CasePage />);
+
+    // Once the md+ media query matches, the mobile tablist (and its tabs)
+    // unmounts entirely instead of being CSS-hidden while panels keep
+    // pointing at it.
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("tab")).toBeNull();
+
+    // Both panels render as plain regions: no tabpanel role, no
+    // aria-labelledby referencing the unmounted tabs, and no hidden
+    // attribute — the two panes sit side-by-side.
+    const form = panelForm();
+    const chat = panelChat();
+    expect(form.getAttribute("role")).toBeNull();
+    expect(form.getAttribute("aria-labelledby")).toBeNull();
+    expect(form.hasAttribute("hidden")).toBe(false);
+    expect(chat.getAttribute("role")).toBeNull();
+    expect(chat.getAttribute("aria-labelledby")).toBeNull();
+    expect(chat.hasAttribute("hidden")).toBe(false);
+
+    // The md+ split layout itself is unchanged.
+    expect(form.parentElement?.className).toContain("md:flex-row");
+    expect(form.className).toContain("md:w-80");
+    expect(chat.className).toContain("flex-1");
+  });
+
+  it("keeps both panels mounted with their ids at md+ (chat state survives resize)", () => {
+    render(<CasePage />);
+
+    // The panel ids remain stable so the mobile tablist can re-attach its
+    // aria-controls when the viewport shrinks again.
+    expect(panelForm().id).toBe("panel-form");
+    expect(panelChat().id).toBe("panel-chat");
+    expect(screen.getByTestId("case-form")).toBeDefined();
   });
 });

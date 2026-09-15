@@ -66,6 +66,54 @@ describe("ToothChart", () => {
     });
   });
 
+  // --- md+ FDI left/right quadrant grid ---
+  it("restores the FDI left/right quadrant pairing in a two-column grid at md+", () => {
+    const { container } = render(
+      <ToothChart selectedTeeth={[]} onToggle={vi.fn()} onClear={vi.fn()} />,
+    );
+    const quadrants = Array.from(
+      container.querySelectorAll("[data-quadrant]"),
+    );
+    expect(quadrants).toHaveLength(4);
+
+    // The quadrant container becomes a two-column grid from md up.
+    const grid = quadrants[0].parentElement as HTMLElement;
+    expect(grid.className).toContain("md:grid");
+    expect(grid.className).toContain("md:grid-cols-2");
+
+    // DOM order stays UR, UL, LR, LL; grid auto-placement then puts the
+    // patient's right quadrants (UR, LR) in the viewer's left column and
+    // the patient's left quadrants (UL, LL) in the viewer's right column,
+    // restoring the FDI left/right relationship. The md:border-r tokens
+    // mark the left column, i.e. the vertical midline.
+    const [ur, ul, lr, ll] = quadrants as HTMLElement[];
+    expect(ur.className).toContain("md:border-r");
+    expect(lr.className).toContain("md:border-r");
+    expect(ul.className).not.toContain("md:border-r");
+    expect(ll.className).not.toContain("md:border-r");
+
+    // The upper row carries the horizontal divider (md:border-b) and the
+    // lower row is padded off it.
+    expect(ur.className).toContain("md:border-b");
+    expect(ul.className).toContain("md:border-b");
+    expect(lr.className).toContain("md:pt-2");
+    expect(ll.className).toContain("md:pt-2");
+  });
+
+  it("hides the stacked mobile hairline dividers once the md+ grid takes over", () => {
+    const { container } = render(
+      <ToothChart selectedTeeth={[]} onToggle={vi.fn()} onClear={vi.fn()} />,
+    );
+    const dividers = Array.from(
+      container.querySelectorAll<HTMLElement>(".h-px.bg-borderSoft"),
+    );
+    // Three stacked-row dividers on mobile, all hidden from md up.
+    expect(dividers).toHaveLength(3);
+    dividers.forEach((divider) => {
+      expect(divider.className).toContain("md:hidden");
+    });
+  });
+
   // --- Selected toggling ---
   it("calls onToggle when a tooth button is clicked", () => {
     const onToggle = vi.fn();

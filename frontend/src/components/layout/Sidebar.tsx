@@ -3,31 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BookOpen,
-  ChevronRight,
-  Clock,
-  FileText,
-  ListChecks,
-  MessageSquare,
-  Stethoscope,
-  TrendingUp,
-} from "lucide-react";
+import { ChevronRight, Stethoscope } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  KNOWLEDGE_BASE_ICON as KnowledgeBaseIcon,
+  KNOWLEDGE_BASE_URL,
+  NAV,
+} from "./navigation";
 import { SessionList } from "./SessionList";
-
-const NAV = [
-  { href: "/", label: "Ca lâm sàng", icon: Stethoscope },
-  { href: "/chat", label: "Trò chuyện", icon: MessageSquare },
-  { href: "/history", label: "Lịch sử", icon: Clock },
-  { href: "/quiz", label: "Trắc nghiệm", icon: ListChecks },
-  { href: "/progress", label: "Tiến độ", icon: TrendingUp },
-  { href: "/upload", label: "Tài liệu", icon: FileText },
-];
-
-// External link to the standalone Quarto knowledge base site.
-// TODO: replace "#" with the deployed site URL (GitHub Pages / Vercel).
-const KNOWLEDGE_BASE_URL = "#";
 
 interface SidebarProps {
   onExpandDrawer?: () => void;
@@ -40,22 +23,25 @@ interface SidebarProps {
  * - below md: hidden entirely (the AppShell drawer handles navigation);
  * - md to below lg: 56px icon rail with an expand button that opens the
  *   AppShell drawer for the full labeled menu and recent sessions;
- * - lg and up: 256px sidebar with labels and the always-mounted SessionList.
+ * - lg and up: 256px sidebar with labels and the visible SessionList.
+ *
+ * The SessionList itself is mounted from md up (hidden between md and lg)
+ * so its `session-updated` listener keeps the session data live across the
+ * tablet range; below md it is not mounted at all, so phones never fetch
+ * session data into an invisible surface.
  */
 export function Sidebar({ onExpandDrawer, drawerOpen }: SidebarProps) {
   const pathname = usePathname();
-  // SessionList is mounted (React-conditional, not CSS-hidden) only at lg+ so
-  // phones and tablets never fetch session data into an invisible surface.
   // Starts false so SSR markup matches the first client render (no hydration
   // mismatch); the matchMedia listener corrects it right after hydration.
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [isMdUp, setIsMdUp] = useState(false);
 
   useEffect(() => {
-    const mql = window.matchMedia("(min-width: 1024px)");
+    const mql = window.matchMedia("(min-width: 768px)");
     const handleChange = (event: MediaQueryListEvent) =>
-      setIsDesktop(event.matches);
+      setIsMdUp(event.matches);
     mql.addEventListener("change", handleChange);
-    setIsDesktop(mql.matches);
+    setIsMdUp(mql.matches);
     return () => mql.removeEventListener("change", handleChange);
   }, []);
 
@@ -129,15 +115,22 @@ export function Sidebar({ onExpandDrawer, drawerOpen }: SidebarProps) {
               title="📖 Knowledge Base"
               className="flex h-11 items-center justify-center gap-3 rounded-lg text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 lg:justify-start lg:px-3 lg:py-2"
             >
-              <BookOpen className="h-4 w-4 shrink-0" />
+              <KnowledgeBaseIcon className="h-4 w-4 shrink-0" />
               <span className="hidden lg:inline">📖 Knowledge Base</span>
             </a>
           </li>
         </ul>
       </nav>
 
-      {/* Recent chat sessions — conditionally mounted at lg+ only */}
-      {isDesktop && <SessionList />}
+      {/* Recent chat sessions — mounted from md up so the list keeps
+          listening for SESSION_UPDATED_EVENT and stays current across the
+          tablet range; the wrapper only reveals it at lg where the sidebar
+          is wide enough for the full list. */}
+      {isMdUp && (
+        <div className="hidden min-h-0 flex-1 lg:flex">
+          <SessionList />
+        </div>
+      )}
     </aside>
   );
 }

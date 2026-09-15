@@ -3,31 +3,14 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BookOpen,
-  Clock,
-  FileText,
-  ListChecks,
-  MessageSquare,
-  Stethoscope,
-  TrendingUp,
-  X,
-} from "lucide-react";
+import { Stethoscope, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  KNOWLEDGE_BASE_ICON as KnowledgeBaseIcon,
+  KNOWLEDGE_BASE_URL,
+  NAV,
+} from "./navigation";
 import { SessionList } from "./SessionList";
-
-const NAV = [
-  { href: "/", label: "Ca lâm sàng", icon: Stethoscope },
-  { href: "/chat", label: "Trò chuyện", icon: MessageSquare },
-  { href: "/history", label: "Lịch sử", icon: Clock },
-  { href: "/quiz", label: "Trắc nghiệm", icon: ListChecks },
-  { href: "/progress", label: "Tiến độ", icon: TrendingUp },
-  { href: "/upload", label: "Tài liệu", icon: FileText },
-];
-
-// External link to the standalone Quarto knowledge base site.
-// TODO: replace "#" with the deployed site URL (GitHub Pages / Vercel).
-const KNOWLEDGE_BASE_URL = "#";
 
 interface DrawerProps {
   open: boolean;
@@ -181,7 +164,7 @@ function DrawerDialog({ onClose }: { onClose: () => void }) {
                 rel="noopener noreferrer"
                 className="flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
               >
-                <BookOpen className="h-4 w-4 shrink-0" />
+                <KnowledgeBaseIcon className="h-4 w-4 shrink-0" />
                 📖 Knowledge Base
               </a>
             </li>

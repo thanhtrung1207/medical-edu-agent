@@ -38,6 +38,18 @@ describe("Header", () => {
     expect(screen.queryByText("Trợ lý Phục hình")).toBeNull();
   });
 
+  it("keeps the brand as plain text so each route keeps its own top-level heading", () => {
+    render(<Header />);
+
+    // Heading-structure regression guard: every route already owns an
+    // appropriate top-level heading (e.g. the h1 on /, /history, /quiz,
+    // /progress, /upload), so the shell brand must NOT become a global
+    // heading (h1) that would compete with or demote them.
+    expect(screen.queryByRole("heading")).toBeNull();
+    const brand = screen.getByText("UniDent");
+    expect(brand.tagName).toBe("SPAN");
+  });
+
   it("hamburger is a 44px mobile-only control wired to onToggleDrawer", () => {
     const onToggleDrawer = vi.fn();
     render(<Header onToggleDrawer={onToggleDrawer} />);

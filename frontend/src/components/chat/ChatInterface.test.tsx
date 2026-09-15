@@ -271,6 +271,32 @@ describe("ChatInterface branding & responsive", () => {
       expect(btn.className).toContain("min-h-[44px]");
     });
   });
+
+  it("gives the finish-and-save action a 44px minimum height", async () => {
+    vi.mocked(sendMessage).mockResolvedValueOnce({
+      content: "Phản hồi phân tích case.",
+      citations: [],
+      warnings: [],
+      reasoning_steps: [],
+      session_id: "case-session-finish",
+    });
+
+    render(<ChatInterface freshSession initialMessage="Phân tích case này" />);
+
+    const finish = await screen.findByRole("button", {
+      name: "✅ Kết thúc & Lưu case",
+    });
+    expect(finish.className).toContain("min-h-[44px]");
+  });
+
+  it("gives the new-conversation action a 44px minimum height", () => {
+    render(<ChatInterface />);
+
+    const button = screen.getByRole("button", {
+      name: "Bắt đầu cuộc trò chuyện mới",
+    });
+    expect(button.className).toContain("min-h-[44px]");
+  });
 });
 
 describe("ChatInterface textarea auto-grow", () => {

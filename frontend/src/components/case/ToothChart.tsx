@@ -42,14 +42,17 @@ function QuadrantRow({
   teeth,
   selectedTeeth,
   onToggle,
+  className = "",
 }: {
   label: string;
   teeth: number[];
   selectedTeeth: number[];
   onToggle: (tooth: number) => void;
+  /** Extra layout classes (md+ grid borders/padding) merged onto the quadrant. */
+  className?: string;
 }) {
   return (
-    <div data-quadrant className="space-y-1">
+    <div data-quadrant className={`space-y-1 ${className}`}>
       <span
         data-quadrant-label
         className="text-[9px] font-semibold uppercase tracking-wider text-slate-400"
@@ -91,33 +94,46 @@ export function ToothChart({ selectedTeeth, onToggle, onClear }: ToothChartProps
         )}
       </div>
 
-      <div className="rounded-lg border border-borderSoft bg-cream/50 p-2.5 space-y-2">
+      {/* Quadrants — stacked rows on mobile (teeth wrap when narrow); from
+          md up a two-column grid restores the FDI left/right relationship:
+          the patient's right quadrants (TRÊN PHẢI 18-11, DƯỚI PHẢI 48-41)
+          occupy the viewer's left column and the patient's left quadrants
+          (TRÊN TRÁI 21-28, DƯỚI TRÁI 31-38) the viewer's right column, with
+          the quadrant borders forming the midline. The mobile hairline
+          dividers are hidden at md+ where the grid takes over. DOM order
+          (UR, UL, LR, LL) is unchanged, so selectedTeeth data/order is
+          untouched. */}
+      <div className="space-y-2 rounded-lg border border-borderSoft bg-cream/50 p-2.5 md:grid md:grid-cols-2 md:space-y-0">
         <QuadrantRow
           label="TRÊN PHẢI"
           teeth={UPPER_RIGHT}
           selectedTeeth={selectedTeeth}
           onToggle={onToggle}
+          className="md:border-b md:border-r md:border-borderSoft md:pb-2 md:pr-2"
         />
-        <div className="h-px bg-borderSoft" />
+        <div className="h-px bg-borderSoft md:hidden" />
         <QuadrantRow
           label="TRÊN TRÁI"
           teeth={UPPER_LEFT}
           selectedTeeth={selectedTeeth}
           onToggle={onToggle}
+          className="md:border-b md:border-borderSoft md:pb-2 md:pl-2"
         />
-        <div className="h-px bg-borderSoft" />
+        <div className="h-px bg-borderSoft md:hidden" />
         <QuadrantRow
           label="DƯỚI PHẢI"
           teeth={LOWER_RIGHT}
           selectedTeeth={selectedTeeth}
           onToggle={onToggle}
+          className="md:border-r md:border-borderSoft md:pt-2 md:pr-2"
         />
-        <div className="h-px bg-borderSoft" />
+        <div className="h-px bg-borderSoft md:hidden" />
         <QuadrantRow
           label="DƯỚI TRÁI"
           teeth={LOWER_LEFT}
           selectedTeeth={selectedTeeth}
           onToggle={onToggle}
+          className="md:pt-2 md:pl-2"
         />
       </div>
 
