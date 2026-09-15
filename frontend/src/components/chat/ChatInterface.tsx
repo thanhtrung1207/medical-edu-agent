@@ -27,7 +27,7 @@ const SUGGESTIONS = [
   "So sánh cầu răng cố định và implant khi thay thế răng đơn lẻ?",
 ];
 
-const DEFAULT_HEADER_TITLE = "Trợ lý AI Giáo dục Nha khoa";
+const DEFAULT_HEADER_TITLE = "UniDent";
 
 const FINISH_CASE_MESSAGE =
   "Thầy ơi, em muốn kết thúc case này. Thầy tóm tắt phân tích của em, đánh giá phác đồ điều trị (điểm tốt + điểm cần cải thiện), và đưa ra phương án tham khảo cuối cùng cùng những lưu ý lâm sàng quan trọng giúp em nhé.";
@@ -37,7 +37,7 @@ interface ChatInterfaceProps {
   initialMessage?: string;
   /** Default true, false in case screen. */
   showSuggestions?: boolean;
-  /** Default "Trợ lý AI Giáo dục Nha khoa". */
+  /** Default "UniDent". */
   headerTitle?: string;
   /** Default undefined. */
   headerSubtitle?: string;
@@ -287,6 +287,13 @@ export function ChatInterface({
     }
   };
 
+  const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(event.target.value);
+    const el = event.target;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  };
+
   useEffect(() => {
     if (
       !userId ||
@@ -380,7 +387,7 @@ export function ChatInterface({
                       key={suggestion}
                       type="button"
                       onClick={() => void handleSend(suggestion)}
-                      className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-left text-sm text-slate-700 transition hover:border-primary hover:bg-primary/5 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      className="min-h-[44px] rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-left text-sm text-slate-700 transition hover:border-primary hover:bg-primary/5 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                     >
                       {suggestion}
                     </button>
@@ -393,7 +400,7 @@ export function ChatInterface({
                   Sẵn sàng phân tích case
                 </p>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  Điền thông tin bệnh nhân ở panel bên trái và nhấn Gửi case để
+                  Điền thông tin bệnh nhân ở form bên cạnh và nhấn Gửi case để
                   phân tích
                 </p>
                 <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
@@ -429,7 +436,7 @@ export function ChatInterface({
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             rows={1}
             placeholder="Nhập câu hỏi nha khoa của bạn..."

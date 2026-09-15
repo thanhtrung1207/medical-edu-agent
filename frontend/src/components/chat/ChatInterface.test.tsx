@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Mock } from "vitest";
 import { getChatHistory, sendMessage } from "@/lib/api";
 import { ChatInterface } from "./ChatInterface";
 
@@ -236,3 +237,106 @@ describe("ChatInterface history failure", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
+
+describe("ChatInterface branding & responsive", () => {
+  it("shows UniDent as default header title", async () => {
+    // Fresh session so no messages → empty state with title visible
+    render(<ChatInterface freshSession />);
+    expect(screen.getByText("UniDent")).toBeDefined();
+  });
+
+  it("uses custom headerTitle when provided", async () => {
+    render(<ChatInterface freshSession headerTitle="Custom Title" />);
+    expect(screen.getByText("Custom Title")).toBeDefined();
+    expect(screen.queryByText("UniDent")).toBeNull();
+  });
+
+  it("renders spatially neutral guidance (no 'panel bên trái')", async () => {
+    // showSuggestions=false triggers the case-ready guidance
+    render(<ChatInterface freshSession showSuggestions={false} />);
+    const guidance = screen.getByText(/Điền thông tin bệnh nhân/);
+    expect(guidance.textContent).not.toContain("panel bên trái");
+    expect(guidance.textContent).not.toContain("bên trái");
+  });
+
+  it("suggestion buttons have min-h-[44px] class", async () => {
+    render(<ChatInterface freshSession />);
+    const buttons = screen.getAllByRole("button");
+    const suggestionButtons = buttons.filter((btn) =>
+      SUGGESTIONS.includes(btn.textContent ?? ""),
+    );
+    expect(suggestionButtons.length).toBe(SUGGESTIONS.length);
+    suggestionButtons.forEach((btn) => {
+      expect(btn.className).toContain("min-h-[44px]");
+    });
+  });
+});
+
+describe("ChatInterface textarea auto-grow", () => {
+  it("resets height to auto and caps at 160px on input change", () => {
+    render(<ChatInterface freshSession />);
+    const textarea = screen.getByRole("textbox", {
+      name: "Ô nhập câu hỏi",
+    }) as HTMLTextAreaElement;
+
+    // Spy on style setter
+    const styleSpy: string[] = [];
+    Object.defineProperty(textarea.style, "height", {
+      configurable: true,
+      get() {
+        return textarea.getAttribute("data-style-height") ?? "";
+      },
+      set(v: string) {
+        styleSpy.push(v);
+        textarea.setAttribute("data-style-height", v);
+      },
+    });
+
+    // Mock scrollHeight
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      get: () => 200,
+    });
+
+    fireEvent.change(textarea, { target: { value: "long text" } });
+
+    // Should reset to auto then cap at 160px
+    expect(styleSpy).toContain("auto");
+    expect(styleSpy).toContain("160px");
+  });
+
+  it("uses scrollHeight when below 160px cap", () => {
+    render(<ChatInterface freshSession />);
+    const textarea = screen.getByRole("textbox", {
+      name: "Ô nhập câu hỏi",
+    }) as HTMLTextAreaElement;
+
+    const styleSpy: string[] = [];
+    Object.defineProperty(textarea.style, "height", {
+      configurable: true,
+      get() {
+        return textarea.getAttribute("data-style-height") ?? "";
+      },
+      set(v: string) {
+        styleSpy.push(v);
+        textarea.setAttribute("data-style-height", v);
+      },
+    });
+
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      get: () => 80,
+    });
+
+    fireEvent.change(textarea, { target: { value: "short" } });
+
+    expect(styleSpy).toContain("auto");
+    expect(styleSpy).toContain("80px");
+  });
+});
+
+const SUGGESTIONS = [
+  "Phân loại mức độ gãy vỡ răng theo Ellis?",
+  "Khi nào nên cắm implant thay cho răng mất đơn lẻ?",
+  "So sánh cầu răng cố định và implant khi thay thế răng đơn lẻ?",
+];
