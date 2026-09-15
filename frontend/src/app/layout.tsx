@@ -8,9 +8,9 @@ import { Footer } from "@/components/layout/Footer";
 const inter = Inter({ subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Trợ lý AI Giáo dục Y khoa",
+  title: "UniDent — Trợ lý AI Giáo dục Nha khoa",
   description:
-    "AI Agent hỗ trợ giảng dạy và học tập y khoa dựa trên y học bằng chứng.",
+    "UniDent hỗ trợ sinh viên Răng Hàm Mặt phân tích case lâm sàng và học tập dựa trên y học bằng chứng.",
   icons: { icon: "/logo.svg" },
 };
 
