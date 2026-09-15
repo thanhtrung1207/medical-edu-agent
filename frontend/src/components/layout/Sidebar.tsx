@@ -31,6 +31,8 @@ const KNOWLEDGE_BASE_URL = "#";
 
 interface SidebarProps {
   onExpandDrawer?: () => void;
+  /** Mirrors the AppShell drawer state so the launcher reports it correctly. */
+  drawerOpen?: boolean;
 }
 
 /**
@@ -40,7 +42,7 @@ interface SidebarProps {
  *   AppShell drawer for the full labeled menu and recent sessions;
  * - lg and up: 256px sidebar with labels and the always-mounted SessionList.
  */
-export function Sidebar({ onExpandDrawer }: SidebarProps) {
+export function Sidebar({ onExpandDrawer, drawerOpen }: SidebarProps) {
   const pathname = usePathname();
   // SessionList is mounted (React-conditional, not CSS-hidden) only at lg+ so
   // phones and tablets never fetch session data into an invisible surface.
@@ -66,7 +68,7 @@ export function Sidebar({ onExpandDrawer }: SidebarProps) {
           type="button"
           onClick={onExpandDrawer}
           aria-label="Mở rộng thanh điều hướng"
-          aria-expanded={false}
+          aria-expanded={drawerOpen ?? false}
           aria-controls="nav-drawer"
           className="flex h-14 w-14 shrink-0 items-center justify-center text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 lg:hidden"
         >

@@ -6,9 +6,11 @@ import { SettingsModal } from "@/components/case/SettingsModal";
 
 interface HeaderProps {
   onToggleDrawer?: () => void;
+  /** Mirrors the AppShell drawer state so the launcher reports it correctly. */
+  drawerOpen?: boolean;
 }
 
-export function Header({ onToggleDrawer }: HeaderProps) {
+export function Header({ onToggleDrawer, drawerOpen }: HeaderProps) {
   const [dark, setDark] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -36,7 +38,7 @@ export function Header({ onToggleDrawer }: HeaderProps) {
           type="button"
           onClick={onToggleDrawer}
           aria-label="Mở menu điều hướng"
-          aria-expanded={false}
+          aria-expanded={drawerOpen ?? false}
           aria-controls="nav-drawer"
           className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 md:hidden"
         >

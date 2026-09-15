@@ -54,6 +54,22 @@ describe("Header", () => {
     expect(onToggleDrawer).toHaveBeenCalledTimes(1);
   });
 
+  it("hamburger aria-expanded reflects the drawerOpen prop", () => {
+    const { rerender } = render(<Header onToggleDrawer={() => {}} />);
+
+    const hamburger = screen.getByRole("button", {
+      name: "Mở menu điều hướng",
+    });
+    expect(hamburger.getAttribute("aria-expanded")).toBe("false");
+
+    rerender(<Header onToggleDrawer={() => {}} drawerOpen />);
+    expect(
+      screen
+        .getByRole("button", { name: "Mở menu điều hướng" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
+
   it("tolerates a missing onToggleDrawer while the AppShell wiring is pending", () => {
     render(<Header />);
 
