@@ -1,16 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { Header } from "@/components/layout/Header";
-import { Footer } from "@/components/layout/Footer";
+import { AppShell } from "@/components/layout/AppShell";
 
 const inter = Inter({ subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Trợ lý AI Giáo dục Y khoa",
+  title: "UniDent — Trợ lý AI Giáo dục Nha khoa",
   description:
-    "AI Agent hỗ trợ giảng dạy và học tập y khoa dựa trên y học bằng chứng.",
+    "UniDent hỗ trợ sinh viên Răng Hàm Mặt phân tích case lâm sàng và học tập dựa trên y học bằng chứng.",
   icons: { icon: "/logo.svg" },
 };
 
@@ -29,12 +27,9 @@ export default function RootLayout({
     <html lang="vi" className={inter.className} suppressHydrationWarning>
       <body>
         <div className="flex h-screen w-full overflow-hidden bg-cream text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-          <Sidebar />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <Header />
-            <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
-            <Footer />
-          </div>
+          {/* AppShell is the client boundary that owns drawer state; this
+              layout stays a server component for metadata rendering. */}
+          <AppShell>{children}</AppShell>
         </div>
       </body>
     </html>

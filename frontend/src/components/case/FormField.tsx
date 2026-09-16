@@ -10,7 +10,7 @@ interface FormFieldProps {
 }
 
 const inputClass =
-  "w-full px-2.5 py-2 border border-borderSoft rounded-lg text-xs bg-cream text-slate-800 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20";
+  "w-full min-h-[44px] px-2.5 py-2 border border-borderSoft rounded-lg text-xs bg-cream text-slate-800 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20";
 
 function FormFieldComponent({ field, value, onChange }: FormFieldProps) {
   return (

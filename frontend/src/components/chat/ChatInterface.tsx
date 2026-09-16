@@ -27,7 +27,7 @@ const SUGGESTIONS = [
   "So sánh cầu răng cố định và implant khi thay thế răng đơn lẻ?",
 ];
 
-const DEFAULT_HEADER_TITLE = "Trợ lý AI Giáo dục Nha khoa";
+const DEFAULT_HEADER_TITLE = "UniDent";
 
 const FINISH_CASE_MESSAGE =
   "Thầy ơi, em muốn kết thúc case này. Thầy tóm tắt phân tích của em, đánh giá phác đồ điều trị (điểm tốt + điểm cần cải thiện), và đưa ra phương án tham khảo cuối cùng cùng những lưu ý lâm sàng quan trọng giúp em nhé.";
@@ -37,7 +37,7 @@ interface ChatInterfaceProps {
   initialMessage?: string;
   /** Default true, false in case screen. */
   showSuggestions?: boolean;
-  /** Default "Trợ lý AI Giáo dục Nha khoa". */
+  /** Default "UniDent". */
   headerTitle?: string;
   /** Default undefined. */
   headerSubtitle?: string;
@@ -287,6 +287,14 @@ export function ChatInterface({
     }
   };
 
+  // Auto-grow: recompute height whenever input text changes (typing or clearing).
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
+
   useEffect(() => {
     if (
       !userId ||
@@ -349,7 +357,7 @@ export function ChatInterface({
             <button
               type="button"
               onClick={handleFinishCase}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700"
+              className="min-h-[44px] rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700"
             >
               ✅ Kết thúc &amp; Lưu case
             </button>
@@ -380,7 +388,7 @@ export function ChatInterface({
                       key={suggestion}
                       type="button"
                       onClick={() => void handleSend(suggestion)}
-                      className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-left text-sm text-slate-700 transition hover:border-primary hover:bg-primary/5 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      className="min-h-[44px] rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-left text-sm text-slate-700 transition hover:border-primary hover:bg-primary/5 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                     >
                       {suggestion}
                     </button>
@@ -393,7 +401,7 @@ export function ChatInterface({
                   Sẵn sàng phân tích case
                 </p>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  Điền thông tin bệnh nhân ở panel bên trái và nhấn Gửi case để
+                  Điền thông tin bệnh nhân trong form case rồi nhấn Gửi case để
                   phân tích
                 </p>
                 <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
@@ -419,7 +427,7 @@ export function ChatInterface({
               type="button"
               onClick={handleNewConversation}
               aria-label="Bắt đầu cuộc trò chuyện mới"
-              className="text-xs font-medium text-primary transition hover:text-primary-700"
+              className="inline-flex min-h-[44px] items-center px-2 text-xs font-medium text-primary transition hover:text-primary-700"
             >
               Bắt đầu cuộc trò chuyện mới
             </button>

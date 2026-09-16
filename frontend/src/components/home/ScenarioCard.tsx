@@ -19,7 +19,7 @@ export default function ScenarioCard({
   return (
     <Link
       href={href}
-      className="group block w-[340px] bg-white rounded-2xl p-7 cursor-pointer border-2 border-borderSoft transition-all hover:shadow-lg hover:shadow-primary/20 hover:-translate-y-1 hover:border-primary"
+      className="group block w-full max-w-[340px] bg-white rounded-2xl p-7 cursor-pointer border-2 border-borderSoft transition-all hover:shadow-lg hover:shadow-primary/20 hover:-translate-y-1 hover:border-primary"
     >
       <div className="w-14 h-14 bg-cream rounded-2xl flex items-center justify-center text-3xl mb-4">
         {icon}

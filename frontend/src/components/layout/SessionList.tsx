@@ -46,7 +46,17 @@ function formatRelativeTime(isoTimestamp: string): string {
  * and refetches whenever a `session-updated` DOM event is dispatched by the
  * chat interface (new session created, topic updated, or reset).
  */
-export function SessionList() {
+interface SessionListProps {
+  /**
+   * Notified when SessionList initiates navigation — opening a session or
+   * starting a new conversation — so container surfaces such as the AppShell
+   * drawer can close themselves. Non-navigational actions (e.g. the
+   * failed-load retry) do not fire it.
+   */
+  onNavigate?: () => void;
+}
+
+export function SessionList({ onNavigate }: SessionListProps) {
   const router = useRouter();
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,10 +106,12 @@ export function SessionList() {
     // The nonce forces ChatInterface to remount, so a fresh chat starts even
     // when the user is already on /chat.
     router.push(`/chat?new=${Date.now()}`);
+    onNavigate?.();
   };
 
   const handleOpenSession = (sessionId: string) => {
     router.push(`/chat?session=${encodeURIComponent(sessionId)}`);
+    onNavigate?.();
   };
 
   return (
@@ -113,7 +125,7 @@ export function SessionList() {
           onClick={handleNewConversation}
           aria-label="Bắt đầu cuộc trò chuyện mới"
           title="Bắt đầu cuộc trò chuyện mới"
-          className="text-slate-400 transition hover:text-primary"
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-primary dark:hover:bg-slate-800"
         >
           <PlusCircle className="h-4 w-4" />
         </button>
@@ -135,7 +147,7 @@ export function SessionList() {
           <button
             type="button"
             onClick={() => void refreshSessions()}
-            className="inline-flex items-center gap-1 text-xs font-medium text-primary transition hover:text-primary-700"
+            className="inline-flex min-h-[44px] items-center gap-1.5 px-2 text-xs font-medium text-primary transition hover:text-primary-700"
           >
             <RotateCw className="h-3 w-3" aria-hidden="true" />
             Thử lại
@@ -156,7 +168,7 @@ export function SessionList() {
                   onClick={() => handleOpenSession(session.session_id)}
                   aria-current={isActive ? "true" : undefined}
                   className={cn(
-                    "flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition",
+                    "flex min-h-[44px] w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition",
                     isActive
                       ? "bg-primary/10"
                       : "hover:bg-slate-100 dark:hover:bg-slate-800",
