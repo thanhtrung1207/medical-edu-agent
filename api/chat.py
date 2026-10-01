@@ -74,6 +74,14 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
         session = svc.session_manager.create_session(user_id=request.user_id)
     session_id = session.id
 
+    # Set session title from first user message (only for new sessions).
+    if session.topic is None:
+        _title = request.message.strip()
+        if len(_title) > 60:
+            _title = _title[:57] + "…"
+        svc.session_manager.update_session_topic(session_id, _title)
+        session.topic = _title
+
     # Persist the user's message and identify only this turn's topic.
     svc.session_manager.add_message(session_id, "user", request.message)
     current_topic = svc.context_builder.detect_topic_from_messages(
@@ -170,12 +178,6 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
                 )
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Memory write failed: %s", type(exc).__name__)
-
-    try:
-        if current_topic:
-            svc.session_manager.update_session_topic(session_id, current_topic)
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.debug("Topic update skipped: %s", type(exc).__name__)
 
     # 8. Structured response.
     return ChatResponse(
