@@ -6,6 +6,26 @@ on top of the same SQLite file used by :class:`memory.session_manager.SessionMan
 
 from __future__ import annotations
 
+from auth.exceptions import (
+    AuthError,
+    AuthGoogleDeniedError,
+    AuthInvalidIdTokenError,
+    AuthRefreshInvalidError,
+    AuthRefreshReuseError,
+    AuthStateMismatchError,
+    AuthTokenExchangeError,
+)
 from auth.store import AuthStore, RefreshToken, User
 
-__all__ = ["AuthStore", "User", "RefreshToken"]
+__all__ = [
+    "AuthStore",
+    "User",
+    "RefreshToken",
+    "AuthError",
+    "AuthStateMismatchError",
+    "AuthGoogleDeniedError",
+    "AuthTokenExchangeError",
+    "AuthInvalidIdTokenError",
+    "AuthRefreshInvalidError",
+    "AuthRefreshReuseError",
+]
