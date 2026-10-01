@@ -49,3 +49,6 @@ Thumbs.db
 node_modules/
 frontend/.next/
 frontend/out/
+
+# Git worktrees used for isolated feature work
+.worktrees/
