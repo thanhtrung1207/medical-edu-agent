@@ -106,6 +106,11 @@ describe("AuthProvider", () => {
   });
 
   it("dismissSecurityNotice clears the notice", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 401 })),
+    );
+
     function NoticeProbe() {
       const { securityNotice, dismissSecurityNotice } = useAuth();
       return (
@@ -121,6 +126,8 @@ describe("AuthProvider", () => {
         <NoticeProbe />
       </AuthProvider>,
     );
+
+    await waitFor(() => screen.getByText("no-notice"));
 
     window.dispatchEvent(
       new CustomEvent(AUTH_SECURITY_EVENT, { detail: { message: "notice" } }),
