@@ -256,6 +256,32 @@ class TestSecurityProperties:
         assert responses[-1].status_code == 429
         assert responses[-1].json()["detail"]["error_code"] == "AUTH_RATE_LIMITED"
 
+    def test_refresh_endpoint_rate_limits_repeated_requests(
+        self, auth_client, monkeypatch
+    ):
+        _mock_authorize_access_token(
+            monkeypatch,
+            userinfo={
+                "sub": "google-sub-6",
+                "email": "f@example.com",
+                "name": "F",
+                "picture": None,
+            },
+        )
+        auth_client.get("/auth/google/callback", follow_redirects=False)
+
+        responses = [auth_client.post("/auth/refresh") for _ in range(31)]
+
+        assert responses[-1].status_code == 429
+        assert responses[-1].json()["detail"]["error_code"] == "AUTH_RATE_LIMITED"
+
+        # The shared, process-wide rate limiter persists across tests in this
+        # session; clear this test's bucket so later tests calling /auth/refresh
+        # from the same client host are not spuriously rate-limited.
+        from api.deps import rate_limiter
+
+        rate_limiter._hits.clear()
+
     def test_refresh_token_never_appears_in_a_json_response_body(
         self, auth_client, monkeypatch
     ):

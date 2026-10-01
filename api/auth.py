@@ -120,6 +120,9 @@ async def google_callback(request: Request, svc: Services = Depends(get_services
 
 @router.post("/refresh")
 def refresh(request: Request, svc: Services = Depends(get_services)):
+    client_key = request.client.host if request.client else "unknown"
+    _enforce_rate_limit(f"auth-refresh:{client_key}")
+
     raw_refresh_token = request.cookies.get(REFRESH_TOKEN_COOKIE)
     if not raw_refresh_token:
         raise HTTPException(

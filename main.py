@@ -84,9 +84,17 @@ app.add_middleware(
 # Session middleware backs the Google OAuth handshake (state/nonce storage
 # between /auth/google/login and /auth/google/callback). This is a short-lived
 # signed cookie unrelated to the app's own access/refresh token cookies.
+_session_secret_key = os.getenv("JWT_SECRET_KEY")
+if not _session_secret_key:
+    logger.warning(
+        "JWT_SECRET_KEY is not set — falling back to an insecure development "
+        "session-signing secret. Set JWT_SECRET_KEY before deploying to production."
+    )
+    _session_secret_key = "dev-insecure-secret-key"
+
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.getenv("JWT_SECRET_KEY", "dev-insecure-secret-key"),
+    secret_key=_session_secret_key,
     same_site="lax",
     https_only=os.getenv("APP_ENV", "development") == "production",
 )
