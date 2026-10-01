@@ -33,14 +33,19 @@ beforeEach(() => {
 });
 
 describe("LoginPage", () => {
-  it("renders the brand panel and a working Google sign-in button when logged out", async () => {
+  it("renders the premium brand panel and auth card when logged out", async () => {
     renderLoginPage();
 
     expect(screen.getByText("UniDent")).toBeDefined();
+    expect(screen.getByText("Welcome to UniDent")).toBeDefined();
+    expect(
+      screen.getByText("Tiếp tục học nha khoa với AI tutor cá nhân hóa theo lịch sử học của bạn."),
+    ).toBeDefined();
+
     const googleButton = await screen.findByRole("button", {
       name: "Đăng nhập với Google",
     });
-    expect(googleButton.className).toContain("min-h-[44px]");
+    expect(googleButton.className).toContain("min-h-[48px]");
   });
 
   it("renders disabled Facebook/Apple buttons and a disabled email/password form", async () => {
@@ -49,10 +54,10 @@ describe("LoginPage", () => {
     await screen.findByRole("button", { name: "Đăng nhập với Google" });
 
     const facebookButton = screen.getByRole("button", {
-      name: "Facebook",
+      name: "Facebook Sắp ra mắt",
     }) as HTMLButtonElement;
     const appleButton = screen.getByRole("button", {
-      name: "Apple",
+      name: "Apple Sắp ra mắt",
     }) as HTMLButtonElement;
     expect(facebookButton.disabled).toBe(true);
     expect(facebookButton.getAttribute("title")).toBe("Sắp ra mắt");
