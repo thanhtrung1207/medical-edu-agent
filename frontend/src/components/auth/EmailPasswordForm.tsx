@@ -1,6 +1,7 @@
 export function EmailPasswordForm() {
   return (
     <form className="w-full" onSubmit={(event) => event.preventDefault()}>
+      {/* disabled repeated per-control: jsdom doesn't propagate fieldset[disabled] to descendants (real browsers do) */}
       <fieldset disabled className="flex flex-col gap-2">
         <input
           type="email"
