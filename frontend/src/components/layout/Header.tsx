@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { LogOut, Menu, Moon, Settings, Stethoscope, Sun } from "lucide-react";
 import { SettingsModal } from "@/components/case/SettingsModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,9 +13,10 @@ interface HeaderProps {
 }
 
 export function Header({ onToggleDrawer, drawerOpen }: HeaderProps) {
+  const router = useRouter();
   const [dark, setDark] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { user, login, logout } = useAuth();
+  const { user, logout } = useAuth();
 
   // Initialise theme from system / stored preference.
   useEffect(() => {
@@ -80,11 +82,11 @@ export function Header({ onToggleDrawer, drawerOpen }: HeaderProps) {
         ) : (
           <button
             type="button"
-            onClick={login}
-            aria-label="Đăng nhập với Google"
+            onClick={() => router.push("/login")}
+            aria-label="Đăng nhập"
             className="flex min-h-[44px] items-center rounded-lg bg-primary px-3 text-xs font-medium text-white transition hover:bg-primary-700"
           >
-            Đăng nhập với Google
+            Đăng nhập
           </button>
         )}
         <button

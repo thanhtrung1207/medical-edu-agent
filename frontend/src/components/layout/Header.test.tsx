@@ -1,5 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const navigation = vi.hoisted(() => ({ push: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: navigation.push }),
+}));
+
 import { Header } from "./Header";
 import { AuthProvider } from "@/contexts/AuthContext";
 
@@ -36,6 +43,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  navigation.push.mockClear();
   localStorage.clear();
   document.documentElement.classList.remove("dark");
   stubMatchMedia(false);
@@ -152,13 +160,16 @@ describe("Header", () => {
 });
 
 describe("Header auth controls", () => {
-  it("shows a 44px-tall Google sign-in control when logged out", async () => {
+  it("shows a 44px-tall login control that navigates to /login when logged out", async () => {
     renderHeader();
 
     const loginButton = await screen.findByRole("button", {
-      name: "Đăng nhập với Google",
+      name: "Đăng nhập",
     });
     expect(loginButton.className).toContain("min-h-[44px]");
+
+    fireEvent.click(loginButton);
+    expect(navigation.push).toHaveBeenCalledWith("/login");
   });
 
   it("shows the avatar and a 44px sign-out control when logged in", async () => {
@@ -187,9 +198,7 @@ describe("Header auth controls", () => {
     fireEvent.click(logoutButton);
 
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Đăng nhập với Google" }),
-      ).toBeDefined(),
+      expect(screen.getByRole("button", { name: "Đăng nhập" })).toBeDefined(),
     );
   });
 });
