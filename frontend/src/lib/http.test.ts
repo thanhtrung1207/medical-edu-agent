@@ -56,6 +56,20 @@ describe("apiFetch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("returns the retried 401 without looping when the retry itself still fails", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(responseWithStatus(401)) // original request
+      .mockResolvedValueOnce(responseWithStatus(200)) // /auth/refresh succeeds
+      .mockResolvedValueOnce(responseWithStatus(401)); // retried request still 401
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await apiFetch("https://api.example.com/api/chat/sessions");
+
+    expect(res.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("deduplicates concurrent 401s into a single refresh call", async () => {
     const fetchMock = vi
       .fn()
