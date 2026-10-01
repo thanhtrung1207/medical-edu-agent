@@ -321,3 +321,17 @@ class StatsResponse(BaseModel):
     total_sessions: int = 0
     total_documents: int = 0
     total_feedback: int = 0
+
+
+# --------------------------------------------------------------------------- #
+# Auth
+# --------------------------------------------------------------------------- #
+
+
+class UserResponse(BaseModel):
+    """Authenticated user profile returned by ``GET /auth/me``."""
+
+    id: str
+    email: str
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
