@@ -346,7 +346,14 @@ class SessionManager:
         """Move every session owned by ``old_user_id`` to ``new_user_id``.
 
         Used to fold a browser's anonymous history into a Google account on
-        first login. Returns the number of sessions moved.
+        first login.
+
+        Args:
+            old_user_id: The current owner of the sessions (e.g. an anonymous id).
+            new_user_id: The owner to reassign the sessions to.
+
+        Returns:
+            The number of sessions moved.
         """
         with self._connect() as conn:
             cursor = conn.execute(
@@ -354,7 +361,9 @@ class SessionManager:
                 (new_user_id, old_user_id),
             )
             conn.commit()
-            return cursor.rowcount
+            moved = cursor.rowcount
+        logger.info("Reassigned %d sessions from %s to %s", moved, old_user_id, new_user_id)
+        return moved
 
     def delete_session(self, session_id: str) -> None:
         """Delete a session and all of its messages.
