@@ -342,6 +342,20 @@ class SessionManager:
             conn.commit()
         logger.debug("Updated topic of session %s to %r", session_id, topic)
 
+    def reassign_user_sessions(self, old_user_id: str, new_user_id: str) -> int:
+        """Move every session owned by ``old_user_id`` to ``new_user_id``.
+
+        Used to fold a browser's anonymous history into a Google account on
+        first login. Returns the number of sessions moved.
+        """
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE sessions SET user_id = ? WHERE user_id = ?",
+                (new_user_id, old_user_id),
+            )
+            conn.commit()
+            return cursor.rowcount
+
     def delete_session(self, session_id: str) -> None:
         """Delete a session and all of its messages.
 
