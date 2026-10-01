@@ -13,34 +13,46 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 
-/** Format an ISO timestamp as a short Vietnamese relative-time label. */
-function formatRelativeTime(isoTimestamp: string): string {
-  const date = new Date(isoTimestamp);
-  if (Number.isNaN(date.getTime())) return "";
+// ---------------------------------------------------------------------------
+// Date grouping
+// ---------------------------------------------------------------------------
 
-  const minutes = Math.floor((Date.now() - date.getTime()) / 60_000);
-  if (minutes < 1) return "Vừa xong";
-  if (minutes < 60) return `${minutes} phút trước`;
+type DateGroup = { label: string; sessions: ChatSessionSummary[] };
 
-  if (minutes / 60 < 24) {
-    return `${Math.floor(minutes / 60)} giờ trước`;
-  }
-
+function groupByDate(sessions: ChatSessionSummary[]): DateGroup[] {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const dayCount = Math.floor(
-    (startOfToday.getTime() - startOfDay.getTime()) / 86_400_000,
-  );
-  if (dayCount === 1) return "Hôm qua";
-  if (dayCount < 7) return `${dayCount} ngày trước`;
+  const todayMs = startOfToday.getTime();
 
-  return date.toLocaleDateString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-  });
+  const buckets: DateGroup[] = [
+    { label: "Hôm nay", sessions: [] },
+    { label: "Hôm qua", sessions: [] },
+    { label: "7 ngày qua", sessions: [] },
+    { label: "Tháng này", sessions: [] },
+    { label: "Lâu hơn", sessions: [] },
+  ];
+
+  for (const s of sessions) {
+    const t = new Date(s.last_active).getTime();
+    if (t >= todayMs) {
+      buckets[0].sessions.push(s);
+    } else if (t >= todayMs - 86_400_000) {
+      buckets[1].sessions.push(s);
+    } else if (t >= todayMs - 6 * 86_400_000) {
+      buckets[2].sessions.push(s);
+    } else if (t >= todayMs - 29 * 86_400_000) {
+      buckets[3].sessions.push(s);
+    } else {
+      buckets[4].sessions.push(s);
+    }
+  }
+
+  return buckets.filter((b) => b.sessions.length > 0);
 }
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 /**
  * Sidebar section listing the user's past chat sessions. Loads once on mount
@@ -118,6 +130,7 @@ export function SessionList({ onNavigate }: SessionListProps) {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-3">
+      {/* Header */}
       <div className="mb-2 flex items-center justify-between px-1">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
           Gần đây
@@ -127,12 +140,13 @@ export function SessionList({ onNavigate }: SessionListProps) {
           onClick={handleNewConversation}
           aria-label="Bắt đầu cuộc trò chuyện mới"
           title="Bắt đầu cuộc trò chuyện mới"
-          className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-primary dark:hover:bg-slate-800"
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition-all duration-150 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] hover:bg-slate-100 hover:text-primary dark:hover:bg-slate-800"
         >
           <PlusCircle className="h-4 w-4" />
         </button>
       </div>
 
+      {/* States */}
       {loading ? (
         <div
           role="status"
@@ -160,58 +174,62 @@ export function SessionList({ onNavigate }: SessionListProps) {
           Chưa có cuộc trò chuyện nào
         </p>
       ) : (
-        <ul className="animate-fade-in space-y-1 pb-3">
-          {sessions.map((session) => {
-            const isActive = session.session_id === currentSessionId;
-            return (
-              <li key={session.session_id}>
-                <button
-                  type="button"
-                  onClick={() => handleOpenSession(session.session_id)}
-                  aria-current={isActive ? "true" : undefined}
-                  className={cn(
-                    "flex min-h-[44px] w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition",
-                    isActive
-                      ? "bg-primary/10"
-                      : "hover:bg-slate-100 dark:hover:bg-slate-800",
-                  )}
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <MessageSquare
-                      className={cn(
-                        "h-3.5 w-3.5 shrink-0",
-                        isActive ? "text-primary" : "text-slate-400",
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span
-                      title={session.topic ?? undefined}
-                      className={cn(
-                        "truncate text-xs font-medium",
-                        isActive
-                          ? "text-primary"
-                          : "text-slate-700 dark:text-slate-200",
-                      )}
-                    >
-                      {session.topic || "Cuộc trò chuyện mới"}
-                    </span>
-                  </span>
-                  <span className="flex items-center justify-between pl-5">
-                    <span className="text-[11px] text-slate-400">
-                      {formatRelativeTime(session.last_active)}
-                    </span>
-                    <span
-                      title={`${session.message_count} tin nhắn`}
-                      className="rounded-full bg-secondary/20 px-1.5 py-0.5 text-[10px] font-semibold text-secondary-700 dark:text-secondary-300"
-                    >
-                      {session.message_count}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="animate-fade-in pb-3">
+          {groupByDate(sessions).map((group) => (
+            <div key={group.label}>
+              {/* Date group header */}
+              <div className="px-1 pb-1 pt-3 first:pt-1">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">
+                  {group.label}
+                </span>
+              </div>
+              {/* Sessions in this group */}
+              <ul className="space-y-0.5">
+                {group.sessions.map((session) => {
+                  const isActive = session.session_id === currentSessionId;
+                  return (
+                    <li key={session.session_id}>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSession(session.session_id)}
+                        aria-current={isActive ? "true" : undefined}
+                        title={session.topic ?? undefined}
+                        className={cn(
+                          "flex min-h-[44px] w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left",
+                          "transition-all duration-150 ease-[cubic-bezier(0.25,0.46,0.45,0.94)]",
+                          isActive
+                            ? "bg-primary/10 text-primary"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800",
+                        )}
+                      >
+                        <MessageSquare
+                          className={cn(
+                            "h-3.5 w-3.5 shrink-0",
+                            isActive ? "text-primary" : "text-slate-400",
+                          )}
+                          aria-hidden="true"
+                        />
+                        <span
+                          className={cn(
+                            "min-w-0 flex-1 truncate text-xs",
+                            isActive ? "font-semibold" : "font-medium",
+                          )}
+                        >
+                          {session.topic || "Cuộc trò chuyện mới"}
+                        </span>
+                        {session.message_count > 0 && (
+                          <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                            {session.message_count}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
