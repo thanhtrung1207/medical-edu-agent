@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Menu, Moon, Settings, Stethoscope, Sun } from "lucide-react";
+import { LogOut, Menu, Moon, Settings, Stethoscope, Sun } from "lucide-react";
 import { SettingsModal } from "@/components/case/SettingsModal";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface HeaderProps {
   onToggleDrawer?: () => void;
@@ -13,6 +14,7 @@ interface HeaderProps {
 export function Header({ onToggleDrawer, drawerOpen }: HeaderProps) {
   const [dark, setDark] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { user, login, logout } = useAuth();
 
   // Initialise theme from system / stored preference.
   useEffect(() => {
@@ -53,6 +55,38 @@ export function Header({ onToggleDrawer, drawerOpen }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-1">
+        {user ? (
+          <div className="flex items-center gap-2 pr-1">
+            {user.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt={user.name ?? user.email}
+                className="h-7 w-7 rounded-full"
+              />
+            ) : null}
+            <span className="hidden text-xs font-medium text-slate-700 dark:text-slate-200 sm:inline">
+              {user.name ?? user.email}
+            </span>
+            <button
+              type="button"
+              onClick={() => void logout()}
+              aria-label="Đăng xuất"
+              className="flex min-h-[44px] items-center rounded-lg px-2 text-xs font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="ml-1 hidden sm:inline">Đăng xuất</span>
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={login}
+            aria-label="Đăng nhập với Google"
+            className="flex min-h-[44px] items-center rounded-lg bg-primary px-3 text-xs font-medium text-white transition hover:bg-primary-700"
+          >
+            Đăng nhập với Google
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}

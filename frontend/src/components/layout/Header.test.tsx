@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Header } from "./Header";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 vi.mock("@/components/case/SettingsModal", () => ({
   SettingsModal: ({ open }: { open: boolean }) =>
@@ -21,17 +22,34 @@ function stubMatchMedia(matches: boolean) {
   }));
 }
 
-afterEach(cleanup);
+function renderHeader(props: Parameters<typeof Header>[0] = {}) {
+  return render(
+    <AuthProvider>
+      <Header {...props} />
+    </AuthProvider>,
+  );
+}
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
   localStorage.clear();
   document.documentElement.classList.remove("dark");
   stubMatchMedia(false);
+  // Default to logged-out so existing assertions (no avatar/logout button)
+  // keep holding; individual tests override this to simulate a logged-in user.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(null, { status: 401 })),
+  );
 });
 
 describe("Header", () => {
   it("renders the UniDent wordmark and drops legacy brand text", () => {
-    render(<Header />);
+    renderHeader();
 
     expect(screen.getByText("UniDent")).toBeDefined();
     expect(screen.queryByText("Phục hình AI")).toBeNull();
@@ -39,12 +57,8 @@ describe("Header", () => {
   });
 
   it("keeps the brand as plain text so each route keeps its own top-level heading", () => {
-    render(<Header />);
+    renderHeader();
 
-    // Heading-structure regression guard: every route already owns an
-    // appropriate top-level heading (e.g. the h1 on /, /history, /quiz,
-    // /progress, /upload), so the shell brand must NOT become a global
-    // heading (h1) that would compete with or demote them.
     expect(screen.queryByRole("heading")).toBeNull();
     const brand = screen.getByText("UniDent");
     expect(brand.tagName).toBe("SPAN");
@@ -52,7 +66,7 @@ describe("Header", () => {
 
   it("hamburger is a 44px mobile-only control wired to onToggleDrawer", () => {
     const onToggleDrawer = vi.fn();
-    render(<Header onToggleDrawer={onToggleDrawer} />);
+    renderHeader({ onToggleDrawer });
 
     const hamburger = screen.getByRole("button", {
       name: "Mở menu điều hướng",
@@ -67,14 +81,18 @@ describe("Header", () => {
   });
 
   it("hamburger aria-expanded reflects the drawerOpen prop", () => {
-    const { rerender } = render(<Header onToggleDrawer={() => {}} />);
+    const { rerender } = renderHeader({ onToggleDrawer: () => {} });
 
     const hamburger = screen.getByRole("button", {
       name: "Mở menu điều hướng",
     });
     expect(hamburger.getAttribute("aria-expanded")).toBe("false");
 
-    rerender(<Header onToggleDrawer={() => {}} drawerOpen />);
+    rerender(
+      <AuthProvider>
+        <Header onToggleDrawer={() => {}} drawerOpen />
+      </AuthProvider>,
+    );
     expect(
       screen
         .getByRole("button", { name: "Mở menu điều hướng" })
@@ -83,7 +101,7 @@ describe("Header", () => {
   });
 
   it("tolerates a missing onToggleDrawer while the AppShell wiring is pending", () => {
-    render(<Header />);
+    renderHeader();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Mở menu điều hướng" }),
@@ -91,7 +109,7 @@ describe("Header", () => {
   });
 
   it("toggles dark mode from a 44px target and persists the choice", () => {
-    render(<Header />);
+    renderHeader();
 
     const themeButton = screen.getByRole("button", {
       name: "Chuyển sang chế độ tối",
@@ -110,7 +128,7 @@ describe("Header", () => {
 
   it("applies the stored dark preference on mount", () => {
     localStorage.setItem("theme", "dark");
-    render(<Header />);
+    renderHeader();
 
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(
@@ -119,7 +137,7 @@ describe("Header", () => {
   });
 
   it("opens the settings modal from a 44px target", () => {
-    render(<Header />);
+    renderHeader();
 
     const settingsButton = screen.getByRole("button", {
       name: "Quản lý dữ liệu học tập",
@@ -130,5 +148,48 @@ describe("Header", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(settingsButton);
     expect(screen.getByRole("dialog")).toBeDefined();
+  });
+});
+
+describe("Header auth controls", () => {
+  it("shows a 44px-tall Google sign-in control when logged out", async () => {
+    renderHeader();
+
+    const loginButton = await screen.findByRole("button", {
+      name: "Đăng nhập với Google",
+    });
+    expect(loginButton.className).toContain("min-h-[44px]");
+  });
+
+  it("shows the avatar and a 44px sign-out control when logged in", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "u1",
+            email: "a@example.com",
+            name: "Nguyễn A",
+            avatar_url: null,
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    renderHeader();
+
+    expect(await screen.findByText("Nguyễn A")).toBeDefined();
+    const logoutButton = screen.getByRole("button", { name: "Đăng xuất" });
+    expect(logoutButton.className).toContain("min-h-[44px]");
+
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }));
+    fireEvent.click(logoutButton);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Đăng nhập với Google" }),
+      ).toBeDefined(),
+    );
   });
 });
