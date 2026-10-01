@@ -15,12 +15,14 @@ from auth.exceptions import (
     AuthStateMismatchError,
     AuthTokenExchangeError,
 )
+from auth.service import AuthService
 from auth.store import AuthStore, RefreshToken, User
 
 __all__ = [
     "AuthStore",
     "User",
     "RefreshToken",
+    "AuthService",
     "AuthError",
     "AuthStateMismatchError",
     "AuthGoogleDeniedError",
