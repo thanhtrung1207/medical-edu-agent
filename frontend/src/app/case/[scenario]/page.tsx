@@ -140,7 +140,7 @@ export default function CasePage() {
   const tabButtonClass = (tab: CaseTab) =>
     `h-11 flex-1 border-b-2 text-sm font-medium transition ${
       activeTab === tab
-        ? 'border-primary text-primary'
+        ? 'border-primary text-primary font-semibold'
         : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
     }`;
 
@@ -159,7 +159,7 @@ export default function CasePage() {
         <div
           role="tablist"
           aria-label="Điều hướng ca lâm sàng"
-          className="flex shrink-0 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 md:hidden"
+          className="flex shrink-0 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 md:hidden"
         >
           <button
             type="button"
@@ -232,7 +232,7 @@ export default function CasePage() {
             />
           ) : (
             /* Placeholder before case is submitted */
-            <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+            <div className="flex h-full flex-col items-center justify-center bg-gradient-to-br from-cream/50 via-white to-white px-6 text-center dark:from-slate-900 dark:to-slate-900">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-3xl">
                 👨‍⚕️
               </div>
@@ -246,7 +246,7 @@ export default function CasePage() {
               <p className="mt-1 text-sm text-slate-500">
                 Điền thông tin bệnh nhân và nhấn Gửi case để phân tích
               </p>
-              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              <p className="mt-3 rounded-lg bg-secondary-50/60 px-3 py-2 text-xs text-secondary-800 dark:bg-slate-800 dark:text-slate-300">
                 💡 Mẹo dùng nhanh — Nhấn ⚡ Case mẫu ở góc trên để tự động điền một ca thực tế và thử ngay
               </p>
             </div>

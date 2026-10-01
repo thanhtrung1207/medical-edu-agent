@@ -12,6 +12,9 @@ import { useQuizTracking } from "@/hooks/useQuizTracking";
 import type { QuizAttempt } from "@/lib/quiz-db";
 import type { Quiz, QuizDifficulty, QuizResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 const DIFFICULTIES: { value: QuizDifficulty; label: string }[] = [
   { value: "easy", label: "Dễ" },
@@ -114,11 +117,11 @@ export default function QuizPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto scrollbar-thin">
-      <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+    <div className="min-h-full bg-gradient-to-br from-cream via-white to-secondary-50 p-4 dark:from-slate-950 dark:via-slate-950 dark:to-primary-900/20 sm:p-6">
+      <div className="mx-auto w-full max-w-3xl">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
               Luyện tập trắc nghiệm
             </h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -127,7 +130,7 @@ export default function QuizPage() {
           </div>
           <Link
             href="/progress"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-700 backdrop-blur transition-all duration-150 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] hover:bg-white hover:shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
           >
             <TrendingUp className="h-4 w-4 text-primary" />
             📊 Tiến độ của tôi
@@ -141,15 +144,16 @@ export default function QuizPage() {
         )}
 
         {!quiz && (
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <Card>
+            <CardContent className="p-5">
             <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
               Chủ đề
             </label>
-            <input
+            <Input
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
               placeholder="Ví dụ: Răng vỡ, Mất răng đơn lẻ, Implant, Phục hình..."
-              className="mb-4 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              className="mb-4"
             />
 
             <div className="mb-4 grid grid-cols-2 gap-4">
@@ -179,7 +183,7 @@ export default function QuizPage() {
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
                   Số câu hỏi
                 </label>
-                <input
+                <Input
                   type="number"
                   min={1}
                   max={20}
@@ -187,16 +191,15 @@ export default function QuizPage() {
                   onChange={(e) =>
                     setCount(Math.max(1, Math.min(20, Number(e.target.value))))
                   }
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 />
               </div>
             </div>
 
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={handleGenerate}
               disabled={loading}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-700 disabled:opacity-60"
+              className="w-auto"
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -204,8 +207,9 @@ export default function QuizPage() {
                 <Sparkles className="h-4 w-4" />
               )}
               {loading ? "Đang tạo..." : "Tạo bộ câu hỏi"}
-            </button>
-          </div>
+            </Button>
+            </CardContent>
+          </Card>
         )}
 
         {quiz && (
@@ -257,15 +261,15 @@ export default function QuizPage() {
             </div>
 
             {!result && (
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 onClick={handleSubmit}
                 disabled={submitting || !userId}
-                className="mt-6 inline-flex items-center gap-2 rounded-lg bg-secondary px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-secondary-600 disabled:opacity-60"
+                className="mt-6 w-auto"
               >
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 Nộp bài
-              </button>
+              </Button>
             )}
           </div>
         )}
