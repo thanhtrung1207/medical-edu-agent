@@ -6,6 +6,7 @@
  */
 
 import { config, USE_MOCK_API } from "./config";
+import { apiFetch } from "./http";
 import { generateId } from "./utils";
 import type {
   Citation,
@@ -69,7 +70,7 @@ export async function sendMessage(
 ): Promise<AssistantReply> {
   if (USE_MOCK_API) return buildMockReply(message);
 
-  const res = await fetch(`${config.apiBaseUrl}/api/chat`, {
+  const res = await apiFetch(`${config.apiBaseUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -102,7 +103,7 @@ export async function getChatHistory(
   if (USE_MOCK_API) return { messages: [], topic: null };
 
   const query = new URLSearchParams({ user_id: userId });
-  const res = await fetch(
+  const res = await apiFetch(
     `${config.apiBaseUrl}/api/chat/history/${sessionId}?${query.toString()}`,
   );
   if (!res.ok) throw new Error(`Chat history request failed: ${res.status}`);
@@ -123,7 +124,7 @@ export async function getChatSessions(
   if (USE_MOCK_API) return [];
 
   const query = new URLSearchParams({ user_id: userId });
-  const res = await fetch(
+  const res = await apiFetch(
     `${config.apiBaseUrl}/api/chat/sessions?${query.toString()}`,
   );
   if (!res.ok) throw new Error(`Chat sessions request failed: ${res.status}`);
@@ -144,7 +145,7 @@ export async function listMemories(userId: string): Promise<LearningMemory[]> {
   if (USE_MOCK_API) return [];
 
   const query = new URLSearchParams({ user_id: userId });
-  const res = await fetch(`${config.apiBaseUrl}/api/memories?${query.toString()}`);
+  const res = await apiFetch(`${config.apiBaseUrl}/api/memories?${query.toString()}`);
   if (!res.ok) throw new Error(`Memory list request failed: ${res.status}`);
   const body = (await res.json()) as { memories: LearningMemory[] };
   return body.memories;
@@ -157,7 +158,7 @@ export async function deleteMemory(
   if (USE_MOCK_API) return;
 
   const query = new URLSearchParams({ user_id: userId });
-  const res = await fetch(
+  const res = await apiFetch(
     `${config.apiBaseUrl}/api/memories/${memoryId}?${query.toString()}`,
     { method: "DELETE" },
   );
@@ -168,7 +169,7 @@ export async function deleteAllMemories(userId: string): Promise<number> {
   if (USE_MOCK_API) return 0;
 
   const query = new URLSearchParams({ user_id: userId });
-  const res = await fetch(`${config.apiBaseUrl}/api/memories?${query.toString()}`, {
+  const res = await apiFetch(`${config.apiBaseUrl}/api/memories?${query.toString()}`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`Memory reset request failed: ${res.status}`);
@@ -199,7 +200,7 @@ export async function uploadDocument(
 
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${config.apiBaseUrl}/api/documents`, {
+  const res = await apiFetch(`${config.apiBaseUrl}/api/documents`, {
     method: "POST",
     body: form,
   });
@@ -229,7 +230,7 @@ export async function listDocuments(): Promise<MedicalDocument[]> {
     ];
   }
 
-  const res = await fetch(`${config.apiBaseUrl}/api/documents`);
+  const res = await apiFetch(`${config.apiBaseUrl}/api/documents`);
   if (!res.ok) throw new Error(`List failed: ${res.status}`);
   return (await res.json()) as MedicalDocument[];
 }
@@ -250,7 +251,7 @@ export async function submitFeedback(
     return;
   }
 
-  const res = await fetch(`${config.apiBaseUrl}/api/feedback`, {
+  const res = await apiFetch(`${config.apiBaseUrl}/api/feedback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -297,7 +298,7 @@ export async function generateQuiz(
     return buildMockQuiz(topic, difficulty, count);
   }
 
-  const res = await fetch(`${config.apiBaseUrl}/api/quiz/generate`, {
+  const res = await apiFetch(`${config.apiBaseUrl}/api/quiz/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ topic, difficulty, count }),
@@ -338,7 +339,7 @@ export async function submitQuizAnswer(
 ): Promise<QuizResult> {
   if (USE_MOCK_API) return gradeQuizLocally(quiz, answers);
 
-  const res = await fetch(`${config.apiBaseUrl}/api/quiz/submit`, {
+  const res = await apiFetch(`${config.apiBaseUrl}/api/quiz/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ quizId: quiz.id, answers, user_id: userId }),
