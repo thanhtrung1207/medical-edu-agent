@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { EmailPasswordForm } from "./EmailPasswordForm";
 
+
 describe("EmailPasswordForm", () => {
   it("renders a disabled email/password form with a coming-soon submit tooltip", () => {
     render(<EmailPasswordForm />);
@@ -11,7 +12,7 @@ describe("EmailPasswordForm", () => {
       "Mật khẩu",
     ) as HTMLInputElement;
     const submitButton = screen.getByRole("button", {
-      name: "Đăng nhập",
+      name: "Đăng nhập bằng email Đang phát triển",
     }) as HTMLButtonElement;
 
     expect(emailInput.disabled).toBe(true);

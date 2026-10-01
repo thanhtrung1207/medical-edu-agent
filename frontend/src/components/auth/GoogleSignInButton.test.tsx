@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 
 describe("GoogleSignInButton", () => {
-  it("renders a 44px-tall button labelled for Google sign-in", async () => {
+  it("renders a premium 48px Google sign-in button with the Google mark", async () => {
     render(
       <AuthProvider>
         <GoogleSignInButton />
@@ -26,6 +26,7 @@ describe("GoogleSignInButton", () => {
     const button = await screen.findByRole("button", {
       name: "Đăng nhập với Google",
     });
-    expect(button.className).toContain("min-h-[44px]");
+    expect(button.className).toContain("min-h-[48px]");
+    expect(screen.getByLabelText("Google")).toBeDefined();
   });
 });
