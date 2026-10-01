@@ -66,17 +66,16 @@ export function Sidebar({ onExpandDrawer, drawerOpen }: SidebarProps) {
             <Stethoscope className="h-5 w-5" />
           </div>
         </div>
-        {/* Expanded brand — lg+ */}
-        <div className="hidden items-center gap-2 lg:flex">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-700 text-white">
+          <div className="hidden items-center gap-2.5 lg:flex">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-700 text-white shadow-md shadow-primary/30">
             <Stethoscope className="h-5 w-5" />
           </div>
           <div className="leading-tight">
-            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+            <p className="text-[15px] font-bold tracking-tight text-slate-900 dark:text-slate-100">
               UniDent
             </p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Trợ lý AI Giáo dục Nha khoa
+            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-primary/60 dark:text-primary/50">
+              AI Giáo dục Nha khoa
             </p>
           </div>
         </div>
@@ -95,10 +94,10 @@ export function Sidebar({ onExpandDrawer, drawerOpen }: SidebarProps) {
                   aria-current={active ? "page" : undefined}
                   title={item.label}
                   className={cn(
-                    "flex h-11 items-center justify-center gap-3 rounded-xl text-sm font-medium transition lg:justify-start lg:px-3 lg:py-2",
+                    "flex h-11 items-center justify-center gap-3 rounded-xl text-sm transition-all duration-150 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] lg:justify-start lg:px-3 lg:py-2",
                     active
-                      ? "bg-primary text-white"
-                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                      ? "bg-primary/10 text-primary font-semibold lg:rounded-l-none lg:border-l-2 lg:border-primary"
+                      : "font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800",
                   )}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
@@ -113,7 +112,7 @@ export function Sidebar({ onExpandDrawer, drawerOpen }: SidebarProps) {
               target="_blank"
               rel="noopener noreferrer"
               title="📖 Knowledge Base"
-              className="flex h-11 items-center justify-center gap-3 rounded-xl text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 lg:justify-start lg:px-3 lg:py-2"
+              className="flex h-11 items-center justify-center gap-3 rounded-xl text-sm font-medium text-slate-600 transition-all duration-150 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 lg:justify-start lg:px-3 lg:py-2"
             >
               <KnowledgeBaseIcon className="h-4 w-4 shrink-0" />
               <span className="hidden lg:inline">📖 Knowledge Base</span>

@@ -7,9 +7,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
 
 const metrics = [
-  { label: "Cases done", value: "12", helper: "case luyện tập" },
-  { label: "Quiz streak", value: "7 ngày", helper: "duy trì học đều" },
-  { label: "Citations", value: "98%", helper: "câu trả lời có nguồn" },
+  { eyebrow: "Đã hoàn thành", value: "12", unit: "ca lâm sàng", accent: "text-primary" },
+  { eyebrow: "Duy trì học", value: "7", unit: "ngày liên tiếp", accent: "text-secondary-700" },
+  { eyebrow: "Độ tin cậy", value: "98%", unit: "câu trả lời có nguồn", accent: "text-emerald-600" },
 ];
 
 export default function HomePage() {
@@ -44,22 +44,26 @@ export default function HomePage() {
                 </p>
                 <Link
                   href="/case/fracture"
-                  className="mt-6 inline-flex min-h-[44px] items-center rounded-2xl bg-white px-5 text-sm font-bold text-primary transition hover:bg-secondary-50"
+                  className="group/cta mt-6 inline-flex min-h-[44px] items-center gap-3 rounded-2xl bg-white px-5 text-sm font-bold text-primary transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] hover:bg-secondary-50 active:scale-[0.97]"
                 >
                   Tiếp tục học
-                  <ArrowRight aria-hidden="true" className="ml-2 h-4 w-4" />
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 transition group-hover/cta:bg-primary/20">
+                    <ArrowRight aria-hidden="true" className="h-3.5 w-3.5 transition group-hover/cta:translate-x-0.5" />
+                  </span>
                 </Link>
               </div>
               <div className="hidden rounded-3xl border border-white/10 bg-white/10 p-4 md:block">
-                <div className="mb-3 text-xs font-bold uppercase tracking-wide text-white/70">
-                  FDI quick map
+                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-white/60">
+                  FDI · Răng sau
                 </div>
                 <div className="grid grid-cols-4 gap-2">
-                  {Array.from({ length: 8 }).map((_, index) => (
+                  {["14","15","16","17","44","45","46","47"].map((tooth) => (
                     <div
-                      key={index}
-                      className="h-10 rounded-xl bg-white/80 shadow-inner shadow-primary/10"
-                    />
+                      key={tooth}
+                      className="flex h-10 items-center justify-center rounded-xl bg-white/20 text-xs font-bold text-white/90 shadow-inner"
+                    >
+                      {tooth}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -88,11 +92,11 @@ export default function HomePage() {
 
         <section className="grid gap-4 md:grid-cols-3">
           {metrics.map((metric) => (
-            <Card key={metric.label}>
+            <Card key={metric.eyebrow}>
               <CardContent className="p-5">
-                <div className="text-sm text-slate-500 dark:text-slate-400">{metric.label}</div>
-                <div className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-50">{metric.value}</div>
-                <div className="mt-1 text-xs text-slate-400">{metric.helper}</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">{metric.eyebrow}</div>
+                <div className={`mt-2 text-4xl font-black tabular-nums tracking-tight ${metric.accent}`}>{metric.value}</div>
+                <div className="mt-1 text-xs text-slate-400">{metric.unit}</div>
               </CardContent>
             </Card>
           ))}
