@@ -46,9 +46,9 @@ export function Sidebar({ onExpandDrawer, drawerOpen }: SidebarProps) {
   }, []);
 
   return (
-    <aside className="hidden w-14 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 md:flex lg:w-64">
+    <aside className="hidden w-14 shrink-0 flex-col border-r border-slate-100 bg-gradient-to-b from-white to-cream/30 dark:border-slate-800 dark:bg-gradient-to-b dark:from-slate-900 dark:to-slate-900 md:flex lg:w-64">
       {/* Brand + expand region — stacked in the rail, row at lg+ */}
-      <div className="flex flex-col border-b border-slate-200 dark:border-slate-800 lg:flex-row lg:items-center lg:gap-2 lg:px-4 lg:py-4">
+      <div className="flex flex-col border-b border-slate-100 dark:border-slate-800 lg:flex-row lg:items-center lg:gap-2 lg:px-4 lg:py-4">
         {/* Expand button — rail only (md to below lg) */}
         <button
           type="button"
@@ -62,13 +62,13 @@ export function Sidebar({ onExpandDrawer, drawerOpen }: SidebarProps) {
         </button>
         {/* Logo mark — rail only, stacked under the expand button */}
         <div className="flex h-14 w-14 shrink-0 items-center justify-center lg:hidden">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-700 text-white">
             <Stethoscope className="h-5 w-5" />
           </div>
         </div>
         {/* Expanded brand — lg+ */}
         <div className="hidden items-center gap-2 lg:flex">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-700 text-white">
             <Stethoscope className="h-5 w-5" />
           </div>
           <div className="leading-tight">
@@ -95,9 +95,9 @@ export function Sidebar({ onExpandDrawer, drawerOpen }: SidebarProps) {
                   aria-current={active ? "page" : undefined}
                   title={item.label}
                   className={cn(
-                    "flex h-11 items-center justify-center gap-3 rounded-lg text-sm font-medium transition lg:justify-start lg:px-3 lg:py-2",
+                    "flex h-11 items-center justify-center gap-3 rounded-xl text-sm font-medium transition lg:justify-start lg:px-3 lg:py-2",
                     active
-                      ? "bg-primary/10 text-primary"
+                      ? "bg-primary text-white"
                       : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
                   )}
                 >
@@ -113,7 +113,7 @@ export function Sidebar({ onExpandDrawer, drawerOpen }: SidebarProps) {
               target="_blank"
               rel="noopener noreferrer"
               title="📖 Knowledge Base"
-              className="flex h-11 items-center justify-center gap-3 rounded-lg text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 lg:justify-start lg:px-3 lg:py-2"
+              className="flex h-11 items-center justify-center gap-3 rounded-xl text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 lg:justify-start lg:px-3 lg:py-2"
             >
               <KnowledgeBaseIcon className="h-4 w-4 shrink-0" />
               <span className="hidden lg:inline">📖 Knowledge Base</span>
