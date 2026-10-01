@@ -47,7 +47,7 @@ export default function LoginPage() {
               <Separator label="hoặc" />
               <EmailPasswordForm />
               <div className="flex items-center justify-center gap-2 text-center text-xs text-slate-400">
-                <ShieldCheck className="h-4 w-4 text-primary" />
+                <ShieldCheck aria-hidden="true" className="h-4 w-4 text-primary" />
                 <span>Bảo mật bởi Google OAuth · lịch sử học được đồng bộ sau đăng nhập</span>
               </div>
             </CardContent>
