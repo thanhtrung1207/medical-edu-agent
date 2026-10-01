@@ -29,7 +29,7 @@ export default function RootLayout({
     <html lang="vi" className={inter.className} suppressHydrationWarning>
       <body>
         <AuthProvider>
-          <div className="flex h-screen w-full flex-col overflow-hidden bg-cream text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-cream text-slate-900 dark:bg-slate-950 dark:text-slate-100">
             <SecurityNoticeBanner />
             {/* AppShell is the client boundary that owns drawer state; this
                 layout stays a server component for metadata rendering. This

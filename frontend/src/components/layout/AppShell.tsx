@@ -54,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar onExpandDrawer={openDrawer} drawerOpen={drawerOpen} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Header onToggleDrawer={toggleDrawer} drawerOpen={drawerOpen} />
-        <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
         <Footer />
       </div>
       <Drawer open={drawerOpen} onClose={closeDrawer} />
