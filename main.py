@@ -19,11 +19,12 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
 
 # Load environment variables from a local .env file before anything else.
 load_dotenv()
 
-from api import chat, documents, feedback, memories, quiz  # noqa: E402
+from api import auth, chat, documents, feedback, memories, quiz  # noqa: E402
 from api.deps import services  # noqa: E402
 from api.models import HealthResponse, StatsResponse  # noqa: E402
 
@@ -61,21 +62,37 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow the Next.js dev frontend.
+# CORS — allow the Next.js dev frontend plus the deployed production origin.
+_cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+_production_frontend_url = os.getenv("FRONTEND_URL")
+if _production_frontend_url and _production_frontend_url not in _cors_origins:
+    _cors_origins.append(_production_frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Session middleware backs the Google OAuth handshake (state/nonce storage
+# between /auth/google/login and /auth/google/callback). This is a short-lived
+# signed cookie unrelated to the app's own access/refresh token cookies.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("JWT_SECRET_KEY", "dev-insecure-secret-key"),
+    same_site="lax",
+    https_only=os.getenv("APP_ENV", "development") == "production",
+)
+
 # Routers.
+app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(feedback.router)
