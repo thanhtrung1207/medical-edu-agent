@@ -18,7 +18,7 @@ import time
 from collections import defaultdict, deque
 from typing import Any, Deque, Dict, List, Optional
 
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,8 @@ class Services:
         self.reasoning_workflow: Any = None
         self.guardrail_runner: Any = None
         self.ingestion_pipeline: Any = None
+        self.auth_store: Any = None
+        self.auth_service: Any = None
 
         # In-memory registries.
         self.document_registry: Dict[str, Dict[str, Any]] = {}
@@ -73,6 +75,12 @@ class Services:
         self.context_builder = ContextBuilder(
             self.session_manager, self.memory_store
         )
+
+        # Google OIDC auth — shares the sessions DB so account linking is atomic.
+        from auth import AuthService, AuthStore
+
+        self.auth_store = AuthStore(os.getenv("SESSION_DB_PATH", "sessions.db"))
+        self.auth_service = AuthService(self.auth_store, self.session_manager)
 
         # Learning subsystem.
         from learning import AdaptiveEngine, FeedbackCollector, LearningDatabase
@@ -157,6 +165,39 @@ services = Services()
 def get_services() -> Services:
     """FastAPI dependency returning the shared :class:`Services` instance."""
     return services
+
+
+def get_current_user(request: Request, svc: "Services" = Depends(get_services)):
+    """FastAPI dependency returning the authenticated :class:`auth.store.User`.
+
+    Raises 401 if the ``access_token`` cookie is missing, invalid, expired,
+    or no longer maps to a known user.
+    """
+    from auth.tokens import InvalidAccessTokenError, decode_access_token
+
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Chưa đăng nhập.")
+
+    try:
+        payload = decode_access_token(token)
+    except InvalidAccessTokenError:
+        raise HTTPException(status_code=401, detail="Chưa đăng nhập.")
+
+    user = svc.auth_store.get_user_by_id(payload["sub"])
+    if user is None:
+        raise HTTPException(status_code=401, detail="Chưa đăng nhập.")
+    return user
+
+
+def get_current_user_optional(
+    request: Request, svc: "Services" = Depends(get_services)
+):
+    """Like :func:`get_current_user` but returns ``None`` instead of raising."""
+    try:
+        return get_current_user(request, svc)
+    except HTTPException:
+        return None
 
 
 class RateLimiter:
