@@ -42,6 +42,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 import { Drawer } from "./Drawer";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 const SESSIONS: ChatSessionSummary[] = [
   {
@@ -53,7 +54,21 @@ const SESSIONS: ChatSessionSummary[] = [
   },
 ];
 
-afterEach(cleanup);
+// Drawer mounts the real SessionList, which now reads the authenticated
+// user id via useAuth(); wrap it in the real AuthProvider as the app root
+// layout does.
+function renderDrawer(props: Parameters<typeof Drawer>[0]) {
+  return render(
+    <AuthProvider>
+      <Drawer {...props} />
+    </AuthProvider>,
+  );
+}
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,17 +78,22 @@ beforeEach(() => {
   localStorage.setItem("medical-edu-agent.user-id", "user-uuid");
   document.body.style.overflow = "";
   vi.mocked(getChatSessions).mockResolvedValue(SESSIONS);
+  // Default to logged-out so SessionList falls back to the anonymous id.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(null, { status: 401 })),
+  );
 });
 
 describe("Drawer", () => {
   it("renders nothing when closed", () => {
-    const { container } = render(<Drawer open={false} onClose={() => {}} />);
+    const { container } = renderDrawer({ open: false, onClose: () => {} });
 
     expect(container.innerHTML).toBe("");
   });
 
   it("renders an accessible dialog with nav labels and sessions when open", async () => {
-    render(<Drawer open onClose={() => {}} />);
+    renderDrawer({ open: true, onClose: () => {} });
 
     const dialog = screen.getByRole("dialog", { name: "Menu điều hướng" });
     expect(dialog.getAttribute("id")).toBe("nav-drawer");
@@ -95,7 +115,7 @@ describe("Drawer", () => {
 
   it("calls onClose when the backdrop is clicked", () => {
     const onClose = vi.fn();
-    render(<Drawer open onClose={onClose} />);
+    renderDrawer({ open: true, onClose: onClose });
 
     fireEvent.click(screen.getByTestId("drawer-backdrop"));
 
@@ -104,7 +124,7 @@ describe("Drawer", () => {
 
   it("calls onClose when Escape is pressed", () => {
     const onClose = vi.fn();
-    render(<Drawer open onClose={onClose} />);
+    renderDrawer({ open: true, onClose: onClose });
 
     fireEvent.keyDown(document, { key: "Escape" });
 
@@ -113,7 +133,7 @@ describe("Drawer", () => {
 
   it("closes from an accessible 44px close button", () => {
     const onClose = vi.fn();
-    render(<Drawer open onClose={onClose} />);
+    renderDrawer({ open: true, onClose: onClose });
 
     const closeButton = screen.getByRole("button", { name: "Đóng menu" });
     expect(closeButton.className).toContain("h-11");
@@ -126,7 +146,7 @@ describe("Drawer", () => {
 
   it("closes on nav-link, session-row, and route navigation", async () => {
     const onClose = vi.fn();
-    const { rerender } = render(<Drawer open onClose={onClose} />);
+    const { rerender } = renderDrawer({ open: true, onClose: onClose });
 
     // Clicking a nav link closes the drawer immediately.
     fireEvent.click(screen.getByRole("link", { name: "Trò chuyện" }));
@@ -143,7 +163,11 @@ describe("Drawer", () => {
 
     // A pathname change while the drawer is open also closes it.
     navigation.pathname = "/chat";
-    rerender(<Drawer open onClose={onClose} />);
+    rerender(
+      <AuthProvider>
+        <Drawer open onClose={onClose} />
+      </AuthProvider>,
+    );
     expect(onClose).toHaveBeenCalledTimes(3);
   });
 
@@ -153,7 +177,7 @@ describe("Drawer", () => {
       .mockRejectedValueOnce(new Error("Chat sessions request failed: 500"))
       .mockResolvedValueOnce(SESSIONS);
     const onClose = vi.fn();
-    render(<Drawer open onClose={onClose} />);
+    renderDrawer({ open: true, onClose: onClose });
 
     const retry = await screen.findByRole("button", { name: "Thử lại" });
     fireEvent.click(retry);
@@ -175,7 +199,7 @@ describe("Drawer", () => {
   });
 
   it("moves initial focus into the dialog when it opens", () => {
-    render(<Drawer open onClose={() => {}} />);
+    renderDrawer({ open: true, onClose: () => {} });
 
     expect(document.activeElement).toBe(
       screen.getByRole("link", { name: "Ca lâm sàng" }),
@@ -183,7 +207,7 @@ describe("Drawer", () => {
   });
 
   it("traps Tab and Shift+Tab focus inside the panel", async () => {
-    render(<Drawer open onClose={() => {}} />);
+    renderDrawer({ open: true, onClose: () => {} });
 
     const first = screen.getByRole("button", { name: "Đóng menu" });
     // Wait for the session rows to load so the last focusable element is
@@ -203,7 +227,7 @@ describe("Drawer", () => {
   });
 
   it("locks body scroll while open and restores it on close", () => {
-    const { unmount } = render(<Drawer open onClose={() => {}} />);
+    const { unmount } = renderDrawer({ open: true, onClose: () => {} });
 
     expect(document.body.style.overflow).toBe("hidden");
 

@@ -16,6 +16,7 @@ vi.mock("@/lib/api", () => ({
 
 import { SessionList } from "./SessionList";
 import { SESSION_UPDATED_EVENT } from "@/lib/client-identity";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 const SESSIONS: ChatSessionSummary[] = [
   {
@@ -27,7 +28,18 @@ const SESSIONS: ChatSessionSummary[] = [
   },
 ];
 
-afterEach(cleanup);
+function renderSessionList(props: Parameters<typeof SessionList>[0] = {}) {
+  return render(
+    <AuthProvider>
+      <SessionList {...props} />
+    </AuthProvider>,
+  );
+}
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -37,11 +49,17 @@ beforeEach(() => {
   localStorage.setItem("medical-edu-agent.user-id", "user-uuid");
   localStorage.setItem("chatSessionId", "session-1");
   vi.mocked(getChatSessions).mockResolvedValue(SESSIONS);
+  // Default to logged-out so SessionList falls back to the anonymous id,
+  // matching today's behavior; individual tests override this.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(null, { status: 401 })),
+  );
 });
 
 describe("SessionList touch targets", () => {
   it("gives the new-conversation launcher a 44px hit area", async () => {
-    render(<SessionList />);
+    renderSessionList();
 
     const button = await screen.findByRole("button", {
       name: "Bắt đầu cuộc trò chuyện mới",
@@ -55,14 +73,14 @@ describe("SessionList touch targets", () => {
       new Error("Chat sessions request failed: 500"),
     );
 
-    render(<SessionList />);
+    renderSessionList();
 
     const retry = await screen.findByRole("button", { name: "Thử lại" });
     expect(retry.className).toContain("min-h-[44px]");
   });
 
   it("gives session rows a 44px minimum hit area", async () => {
-    render(<SessionList />);
+    renderSessionList();
 
     const row = await screen.findByRole("button", {
       name: /Cuộc trò chuyện mẫu/,
@@ -74,7 +92,7 @@ describe("SessionList touch targets", () => {
 describe("SessionList behavior", () => {
   it("starts a new conversation, clears the active session and notifies the container", async () => {
     const onNavigate = vi.fn();
-    render(<SessionList onNavigate={onNavigate} />);
+    renderSessionList({ onNavigate });
 
     const button = await screen.findByRole("button", {
       name: "Bắt đầu cuộc trò chuyện mới",
@@ -93,7 +111,7 @@ describe("SessionList behavior", () => {
       .mockRejectedValueOnce(new Error("Chat sessions request failed: 500"))
       .mockResolvedValueOnce(SESSIONS);
 
-    render(<SessionList />);
+    renderSessionList();
 
     const retry = await screen.findByRole("button", { name: "Thử lại" });
     fireEvent.click(retry);
@@ -105,7 +123,7 @@ describe("SessionList behavior", () => {
   });
 
   it("refetches in realtime when the session-updated event fires", async () => {
-    render(<SessionList />);
+    renderSessionList();
 
     await screen.findByRole("button", { name: /Cuộc trò chuyện mẫu/ });
     expect(getChatSessions).toHaveBeenCalledTimes(1);
@@ -114,6 +132,29 @@ describe("SessionList behavior", () => {
 
     await waitFor(() => {
       expect(getChatSessions).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("fetches sessions with the authenticated user's id once login resolves", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "auth-user-1",
+            email: "a@example.com",
+            name: "A",
+            avatar_url: null,
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    renderSessionList();
+
+    await waitFor(() => {
+      expect(getChatSessions).toHaveBeenCalledWith("auth-user-1");
     });
   });
 });

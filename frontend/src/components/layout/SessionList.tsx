@@ -11,6 +11,7 @@ import {
   SESSION_UPDATED_EVENT,
 } from "@/lib/client-identity";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 /** Format an ISO timestamp as a short Vietnamese relative-time label. */
 function formatRelativeTime(isoTimestamp: string): string {
@@ -58,6 +59,7 @@ interface SessionListProps {
 
 export function SessionList({ onNavigate }: SessionListProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -67,7 +69,7 @@ export function SessionList({ onNavigate }: SessionListProps) {
   const refreshSessions = useCallback(async () => {
     const fetchId = ++fetchIdRef.current;
     try {
-      const userId = getOrCreateUserId();
+      const userId = user?.id ?? getOrCreateUserId();
       const data = await getChatSessions(userId);
       if (fetchId !== fetchIdRef.current) return;
       setSessions(
@@ -87,7 +89,7 @@ export function SessionList({ onNavigate }: SessionListProps) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     void refreshSessions();
@@ -98,7 +100,7 @@ export function SessionList({ onNavigate }: SessionListProps) {
     return () => {
       window.removeEventListener(SESSION_UPDATED_EVENT, handleSessionUpdated);
     };
-  }, [refreshSessions]);
+  }, [refreshSessions, user]);
 
   const handleNewConversation = () => {
     clearActiveSessionId();
