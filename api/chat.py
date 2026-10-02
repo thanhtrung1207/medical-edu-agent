@@ -117,8 +117,11 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Context build failed: %s", type(exc).__name__)
 
-    # 5. Run the reasoning workflow.
-    state = await svc.reasoning_workflow.run(request.message, context)
+    # 5. Run the mode-specific runner.
+    if request.mode == "chat":
+        state = await svc.chat_mode_runner.run(request.message, context)
+    else:
+        state = await svc.react_runner.run(request.message, context)
     answer = (
         state.get("verified_answer")
         or state.get("formatted_answer")
