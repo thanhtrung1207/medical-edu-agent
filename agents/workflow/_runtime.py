@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 import uuid
 from typing import Any, Optional
 
@@ -209,6 +210,20 @@ def format_history_snippet(history: list, max_messages: int = 4, max_chars: int 
     return "\n".join(lines)
 
 
+_EVIDENCE_FENCE_CLOSE = "--- KẾT THÚC DỮ LIỆU THAM KHẢO ---"
+_EVIDENCE_FENCE_ESCAPED = "--- KẾT THÚC DỮ LIỆU THAM KHẢO (đã thoát) ---"
+
+
+def _sanitize_evidence_text(value: Any) -> str:
+    text = str(value)
+    text = "".join(
+        char
+        for char in text
+        if char in "\n\t" or unicodedata.category(char) not in {"Cc", "Cf", "Cs"}
+    )
+    return text.replace(_EVIDENCE_FENCE_CLOSE, _EVIDENCE_FENCE_ESCAPED)
+
+
 def format_retrieved_passages(
     sources: list, max_sources: int = 3, max_chars: int = 1800
 ) -> str:
@@ -220,10 +235,12 @@ def format_retrieved_passages(
             break
         if not isinstance(source, dict):
             continue
-        content = str(source.get("content") or "").strip()
+        content = _sanitize_evidence_text(source.get("content") or "").strip()
         if not content:
             continue
-        label = str(source.get("title") or source.get("source") or "Nguồn không rõ")
+        label = _sanitize_evidence_text(
+            source.get("title") or source.get("source") or "Nguồn không rõ"
+        )
         header = f"[Nguồn: {label}]\n"
         available = remaining - len(header)
         if available <= 0:
@@ -236,5 +253,5 @@ def format_retrieved_passages(
     return (
         "--- BẮT ĐẦU DỮ LIỆU THAM KHẢO KHÔNG TIN CẬY ---\n"
         + "\n\n".join(passages)
-        + "\n--- KẾT THÚC DỮ LIỆU THAM KHẢO ---"
+        + f"\n{_EVIDENCE_FENCE_CLOSE}"
     )

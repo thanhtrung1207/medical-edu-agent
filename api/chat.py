@@ -39,27 +39,27 @@ router = APIRouter(prefix="/api", tags=["chat"])
 
 
 def _build_citations(state: Dict[str, Any]) -> List[Citation]:
-    """Build structured citations from the workflow state.
-
-    Prefers the full ``retrieved_sources`` objects (title + snippet); falls
-    back to the plain citation strings produced by the Answer node.
-    """
+    """Build citations only from retrieved source records with provenance."""
     citations: List[Citation] = []
+    seen_sources: set[str] = set()
     for src in state.get("retrieved_sources") or []:
         if isinstance(src, dict):
+            source = str(
+                src.get("url")
+                or src.get("source")
+                or src.get("path")
+                or src.get("title")
+                or "Tài liệu"
+            )
+            if source in seen_sources:
+                continue
+            seen_sources.add(source)
             citations.append(
                 Citation(
-                    source=str(
-                        src.get("title") or src.get("source") or "Tài liệu"
-                    ),
+                    source=source,
                     quote=str(src.get("snippet") or ""),
                 )
             )
-    if not citations:
-        for item in state.get("citations") or []:
-            text = str(item).strip()
-            if text:
-                citations.append(Citation(source=text, quote=""))
     return citations
 
 
@@ -221,9 +221,9 @@ async def _stream_chat(request: ChatRequest, svc: Services):
         result = await _run_chat(request, svc)
     except HTTPException:
         raise
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive
         logger.exception("Streaming chat failed")
-        yield _sse("error", str(exc))
+        yield _sse("error", "Đã xảy ra lỗi khi xử lý luồng trả lời.")
         return
 
     yield _sse("confirm", {"session_id": result.session_id})

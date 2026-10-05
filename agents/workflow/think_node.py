@@ -20,7 +20,13 @@ from google.adk import Agent
 
 from agents.model_config import get_primary_model
 
-from ._runtime import AgentRuntimeError, extract_json, format_history_snippet, run_agent
+from ._runtime import (
+    AgentRuntimeError,
+    extract_json,
+    format_history_snippet,
+    format_retrieved_passages,
+    run_agent,
+)
 
 __all__ = ["think_agent", "think_node", "search_knowledge_base"]
 
@@ -145,10 +151,7 @@ async def think_node(state: Dict) -> Dict:
 
     # Retrieve grounding sources via the real ChromaDB knowledge-base search.
     sources = search_knowledge_base(confirmed_query)
-    sources_text = "\n".join(
-        f"- {s.get('title', '')}: {s.get('snippet', '')} (nguồn: {s.get('source', '')})"
-        for s in sources
-    )
+    sources_text = format_retrieved_passages(sources)
 
     history = state.get("context", {}).get("conversation_history", [])
     # Exclude the last message (current turn) to avoid duplication

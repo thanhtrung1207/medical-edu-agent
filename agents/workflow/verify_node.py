@@ -104,29 +104,34 @@ def _safety_check(answer: str) -> List[str]:
     return warnings
 
 
-def _heuristic_verify(state: Dict, warnings: List[str]) -> Dict:
-    """Deterministic fallback verification used when the LLM is unavailable.
+def _merge_warnings(*groups) -> List[str]:
+    """Merge warning groups in order while removing duplicates."""
+    merged: List[str] = []
+    for group in groups:
+        values = group if isinstance(group, list) else [group]
+        for value in values:
+            warning = str(value).strip() if value is not None else ""
+            if warning and warning not in merged:
+                merged.append(warning)
+    return merged
 
-    Confidence is derived from the Think node's ``confidence_level`` and is
-    reduced when safety warnings are present.
 
-    Args:
-        state: The workflow state (provides the answer and reasoning confidence).
-        warnings: Warnings produced by :func:`_safety_check`.
-
-    Returns:
-        A dict with ``verified_answer``, ``confidence_score``, ``warnings`` and
-        ``needs_retry``.
-    """
+def _heuristic_verify(state: Dict, safety_warnings: List[str]) -> Dict:
+    """Deterministic fallback verification used when the LLM is unavailable."""
     formatted_answer = state.get("formatted_answer", "")
     base_confidence = float(state.get("confidence_level", 0.5) or 0.5)
-    # Penalise confidence for each warning detected.
-    confidence_score = max(0.0, min(1.0, base_confidence - 0.15 * len(warnings)))
+    confidence_score = max(
+        0.0,
+        min(1.0, base_confidence - 0.15 * len(safety_warnings)),
+    )
 
     return {
         "verified_answer": formatted_answer,
         "confidence_score": confidence_score,
-        "warnings": warnings,
+        "warnings": _merge_warnings(
+            state.get("warnings") or [],
+            safety_warnings,
+        ),
         "needs_retry": confidence_score < CONFIDENCE_THRESHOLD,
     }
 
@@ -175,11 +180,12 @@ async def verify_node(state: Dict) -> Dict:
         if not isinstance(llm_warnings, list):
             llm_warnings = [str(llm_warnings)]
 
-        # Merge LLM warnings with deterministic safety warnings (dedup, ordered).
-        merged_warnings: List[str] = []
-        for warning in [*safety_warnings, *(str(w) for w in llm_warnings)]:
-            if warning and warning not in merged_warnings:
-                merged_warnings.append(warning)
+        # Preserve runner warnings, then append safety and LLM warnings.
+        merged_warnings = _merge_warnings(
+            state.get("warnings") or [],
+            safety_warnings,
+            llm_warnings,
+        )
 
         needs_retry = bool(parsed.get("needs_retry", False))
         # Safety net: enforce retry when confidence is below threshold.
