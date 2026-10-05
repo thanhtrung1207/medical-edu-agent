@@ -8,7 +8,7 @@ camelCase (frontend) variants so both callers work without modification.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -25,6 +25,9 @@ class ChatRequest(BaseModel):
     user_id: str = Field(min_length=1, max_length=128)
     # When true the endpoint returns an SSE stream instead of a JSON body.
     stream: bool = False
+    # Runner selector. "chat" = single web-search summary; "agent" = ReAct loop.
+    # Default preserves today's behavior for callers that omit the field.
+    mode: Literal["chat", "agent"] = "agent"
 
 
 class Citation(BaseModel):

@@ -39,27 +39,27 @@ router = APIRouter(prefix="/api", tags=["chat"])
 
 
 def _build_citations(state: Dict[str, Any]) -> List[Citation]:
-    """Build structured citations from the workflow state.
-
-    Prefers the full ``retrieved_sources`` objects (title + snippet); falls
-    back to the plain citation strings produced by the Answer node.
-    """
+    """Build citations only from retrieved source records with provenance."""
     citations: List[Citation] = []
+    seen_sources: set[str] = set()
     for src in state.get("retrieved_sources") or []:
         if isinstance(src, dict):
+            source = str(
+                src.get("url")
+                or src.get("source")
+                or src.get("path")
+                or src.get("title")
+                or "Tài liệu"
+            )
+            if source in seen_sources:
+                continue
+            seen_sources.add(source)
             citations.append(
                 Citation(
-                    source=str(
-                        src.get("title") or src.get("source") or "Tài liệu"
-                    ),
+                    source=source,
                     quote=str(src.get("snippet") or ""),
                 )
             )
-    if not citations:
-        for item in state.get("citations") or []:
-            text = str(item).strip()
-            if text:
-                citations.append(Citation(source=text, quote=""))
     return citations
 
 
@@ -117,8 +117,24 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Context build failed: %s", type(exc).__name__)
 
-    # 5. Run the reasoning workflow.
-    state = await svc.reasoning_workflow.run(request.message, context)
+    # 5. Run the mode-specific runner.
+    try:
+        if request.mode == "chat":
+            state = await svc.chat_mode_runner.run(request.message, context)
+        else:
+            state = await svc.react_runner.run(request.message, context)
+    except Exception as exc:
+        logger.exception("Mode runner failed: %s", type(exc).__name__)
+        fallback = "Đã xảy ra lỗi khi xử lý câu trả lời. Vui lòng thử lại sau."
+        state = {
+            "formatted_answer": fallback,
+            "verified_answer": fallback,
+            "reasoning_steps": [],
+            "citations": [],
+            "retrieved_sources": [],
+            "confidence_score": 0.0,
+            "warnings": [f"RunnerError: {type(exc).__name__}"],
+        }
     answer = (
         state.get("verified_answer")
         or state.get("formatted_answer")
@@ -205,9 +221,9 @@ async def _stream_chat(request: ChatRequest, svc: Services):
         result = await _run_chat(request, svc)
     except HTTPException:
         raise
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive
         logger.exception("Streaming chat failed")
-        yield _sse("error", str(exc))
+        yield _sse("error", "Đã xảy ra lỗi khi xử lý luồng trả lời.")
         return
 
     yield _sse("confirm", {"session_id": result.session_id})

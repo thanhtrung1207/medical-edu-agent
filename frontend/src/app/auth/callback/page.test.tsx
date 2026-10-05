@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -16,6 +17,10 @@ afterEach(() => {
 });
 
 describe("AuthCallbackPage", () => {
+  it("wraps search-param handling in a Suspense boundary", () => {
+    expect(AuthCallbackPage().type).toBe(Suspense);
+  });
+
   it("redirects home immediately on success (?ok=1)", async () => {
     searchParamsValue = new URLSearchParams({ ok: "1" });
 

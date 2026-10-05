@@ -99,3 +99,5 @@ export interface SavedCase {
   summary: string;
   sessionId?: string;
 }
+
+export type ChatMode = "chat" | "agent";

@@ -10,6 +10,7 @@ import { apiFetch } from "./http";
 import { generateId } from "./utils";
 import type {
   Citation,
+  ChatMode,
   FeedbackPayload,
   MedicalDocument,
   Quiz,
@@ -67,6 +68,7 @@ export async function sendMessage(
   message: string,
   userId: string,
   sessionId?: string,
+  mode?: ChatMode,
 ): Promise<AssistantReply> {
   if (USE_MOCK_API) return buildMockReply(message);
 
@@ -77,6 +79,7 @@ export async function sendMessage(
       message,
       user_id: userId,
       ...(sessionId ? { session_id: sessionId } : {}),
+      ...(mode ? { mode } : {}),
     }),
   });
   if (!res.ok) throw new Error(`Chat request failed: ${res.status}`);

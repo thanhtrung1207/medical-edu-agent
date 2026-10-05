@@ -40,6 +40,8 @@ class Services:
         self.adaptive_engine: Any = None
         self.reasoning_workflow: Any = None
         self.guardrail_runner: Any = None
+        self.chat_mode_runner: Any = None
+        self.react_runner: Any = None
         self.ingestion_pipeline: Any = None
         self.auth_store: Any = None
         self.auth_service: Any = None
@@ -96,6 +98,31 @@ class Services:
 
         self.reasoning_workflow = reasoning_workflow
         self.guardrail_runner = guardrail_runner
+
+        # Chat/Agent mode runners (replace one-shot reasoning_workflow when
+        # the client passes ChatRequest.mode = "chat" / "agent").
+        from agents.workflow.chat_mode import ChatModeRunner
+        from agents.workflow.react_runner import ReActRunner
+        from tools.medical_search import retrieve as rag_retrieve
+        from tools.url_reader import read_url as url_reader
+        from tools.web_search import tavily_search
+
+        llm = _react_llm_adapter()
+        self.chat_mode_runner = ChatModeRunner(llm=llm)
+
+        async def _verify_only(state: Dict[str, Any]) -> Dict[str, Any]:
+            from agents.workflow.verify_node import verify_node
+
+            return await verify_node(state)
+
+        web_search_tool = tavily_search if os.getenv("TAVILY_API_KEY") else None
+        self.react_runner = ReActRunner(
+            llm=llm,
+            rag_search=lambda q: rag_retrieve(q, top_k=5),
+            web_search=web_search_tool,
+            read_url=url_reader,
+            verify=_verify_only,
+        )
 
         # Optional: document ingestion pipeline (RAG).
         try:
@@ -156,6 +183,25 @@ class Services:
             "guardrails": self.guardrail_runner is not None,
             "document_ingestion": self.ingestion_pipeline is not None,
         }
+
+
+def _react_llm_adapter():
+    """Return an async LLM callable (prompt -> text) backed by the primary model."""
+    from google.adk import Agent
+
+    from agents.model_config import get_primary_model
+    from agents.workflow._runtime import run_agent
+
+    agent = Agent(
+        name="chat_mode_llm",
+        model=get_primary_model(),
+        instruction="Trả về đúng nội dung được yêu cầu trong prompt.",
+    )
+
+    async def _call(prompt: str) -> str:
+        return await run_agent(agent, prompt)
+
+    return _call
 
 
 # Process-wide singleton, wired during application startup.

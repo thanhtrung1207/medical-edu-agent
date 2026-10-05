@@ -102,6 +102,7 @@ describe("ChatInterface identity", () => {
         "Phân tích case này",
         "user-uuid",
         undefined,
+        "chat",
       );
     });
 
@@ -135,6 +136,7 @@ describe("ChatInterface identity", () => {
         "Câu hỏi cũ",
         "user-uuid",
         "session-1",
+        "chat",
       );
     });
 
@@ -156,6 +158,36 @@ describe("ChatInterface identity", () => {
     expect(screen.queryByText("Câu hỏi cũ")).toBeNull();
     expect(screen.queryByText("Phản hồi cũ không được hiển thị")).toBeNull();
     expect(localStorage.getItem("chatSessionId")).toBeNull();
+  });
+});
+
+describe("ChatInterface mode selection", () => {
+  it("sends agent mode after selecting the Agent pill", async () => {
+    vi.mocked(sendMessage).mockResolvedValueOnce({
+      content: "Trả lời ở chế độ agent.",
+      citations: [],
+      warnings: [],
+      reasoning_steps: [],
+      session_id: "agent-session-1",
+    });
+
+    render(<ChatInterface freshSession />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Agent/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Ô nhập câu hỏi" }), {
+      target: { value: "Câu hỏi agent" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Gửi câu hỏi" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        "Câu hỏi agent",
+        "user-uuid",
+        undefined,
+        "agent",
+      );
+    });
+    expect(screen.getByText(/phân tích sâu/i)).toBeDefined();
   });
 });
 
@@ -190,6 +222,7 @@ describe("ChatInterface history failure", () => {
         "Câu hỏi mới",
         "user-uuid",
         "session-1",
+        "chat",
       );
     });
     await waitFor(() => {
