@@ -7,8 +7,42 @@ from typing import Any, Dict, List
 import pytest
 from fastapi.testclient import TestClient
 
-from api.deps import services
+from api.deps import _react_llm_adapter, services
 from main import app
+
+
+@pytest.mark.asyncio
+async def test_react_llm_adapter_uses_adk_runtime(monkeypatch):
+    import agents.model_config
+    import agents.workflow._runtime
+    import google.adk
+
+    configured_model = object()
+    recorded = {}
+
+    class FakeAgent:
+        def __init__(self, *, name, model, instruction):
+            recorded["agent"] = self
+            recorded["name"] = name
+            recorded["model"] = model
+            recorded["instruction"] = instruction
+
+    async def fake_run_agent(agent, prompt):
+        recorded["run"] = (agent, prompt)
+        return "adapter response"
+
+    monkeypatch.setattr(agents.model_config, "get_primary_model", lambda: configured_model)
+    monkeypatch.setattr(google.adk, "Agent", FakeAgent)
+    monkeypatch.setattr(agents.workflow._runtime, "run_agent", fake_run_agent)
+
+    adapter = _react_llm_adapter()
+    result = await adapter("prompt")
+
+    assert recorded["name"] == "chat_mode_llm"
+    assert recorded["model"] is configured_model
+    assert recorded["instruction"] == "Trả về đúng nội dung được yêu cầu trong prompt."
+    assert recorded["run"] == (recorded["agent"], "prompt")
+    assert result == "adapter response"
 
 
 @pytest.fixture

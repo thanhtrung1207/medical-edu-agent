@@ -107,7 +107,8 @@ class Services:
         from tools.url_reader import read_url as url_reader
         from tools.web_search import tavily_search
 
-        self.chat_mode_runner = ChatModeRunner()
+        llm = _react_llm_adapter()
+        self.chat_mode_runner = ChatModeRunner(llm=llm)
 
         async def _verify_only(state: Dict[str, Any]) -> Dict[str, Any]:
             from agents.workflow.verify_node import verify_node
@@ -116,7 +117,7 @@ class Services:
 
         web_search_tool = tavily_search if os.getenv("TAVILY_API_KEY") else None
         self.react_runner = ReActRunner(
-            llm=_react_llm_adapter(),
+            llm=llm,
             rag_search=lambda q: rag_retrieve(q, top_k=5),
             web_search=web_search_tool,
             read_url=url_reader,
@@ -186,16 +187,19 @@ class Services:
 
 def _react_llm_adapter():
     """Return an async LLM callable (prompt -> text) backed by the primary model."""
-    from agents.model_config import get_primary_model
+    from google.adk import Agent
 
-    model = get_primary_model()
+    from agents.model_config import get_primary_model
+    from agents.workflow._runtime import run_agent
+
+    agent = Agent(
+        name="chat_mode_llm",
+        model=get_primary_model(),
+        instruction="Trả về đúng nội dung được yêu cầu trong prompt.",
+    )
 
     async def _call(prompt: str) -> str:
-        try:
-            resp = await model.generate_async(prompt)
-        except AttributeError:
-            resp = model.generate(prompt)
-        return str(resp)
+        return await run_agent(agent, prompt)
 
     return _call
 

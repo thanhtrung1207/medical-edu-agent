@@ -5,8 +5,8 @@ via the ``test_client`` fixture (see :mod:`tests.conftest`). The whole module is
 skipped when ``google-adk`` is unavailable, because constructing the root agent
 during application startup requires it.
 
-The reasoning workflow is monkeypatched where a chat turn would otherwise make
-live LLM calls, keeping the tests deterministic and offline.
+The Agent runner is monkeypatched where a chat turn would otherwise make live
+LLM calls, keeping the tests deterministic and offline.
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ import pytest
 pytest.importorskip("google.adk")
 
 
-def _patch_workflow(monkeypatch, answer="Đau ngực sau xương ức.", confidence=0.9):
-    """Replace the shared reasoning workflow ``run`` with a deterministic stub."""
+def _patch_agent_runner(monkeypatch, answer="Đau ngực sau xương ức.", confidence=0.9):
+    """Replace the shared Agent runner ``run`` with a deterministic stub."""
     from api.deps import services
 
     async def fake_run(user_input, context=None):
@@ -33,7 +33,7 @@ def _patch_workflow(monkeypatch, answer="Đau ngực sau xương ức.", confide
             "retrieved_sources": [],
         }
 
-    monkeypatch.setattr(services.reasoning_workflow, "run", fake_run)
+    monkeypatch.setattr(services.react_runner, "run", fake_run)
 
 
 class TestHealthEndpoint:
@@ -66,7 +66,7 @@ class TestCorsPreflight:
 class TestChatEndpoint:
     def test_chat_basic(self, test_client, monkeypatch):
         """POST /api/chat with a valid message returns a structured answer."""
-        _patch_workflow(monkeypatch)
+        _patch_agent_runner(monkeypatch)
         resp = test_client.post(
             "/api/chat",
             json={"message": "Triệu chứng nhồi máu cơ tim?", "user_id": "u1"},
@@ -104,7 +104,7 @@ class TestChatEndpoint:
                 "retrieved_sources": [source],
             }
 
-        monkeypatch.setattr(services.reasoning_workflow, "run", fake_run)
+        monkeypatch.setattr(services.react_runner, "run", fake_run)
         response = test_client.post(
             "/api/chat",
             json={
@@ -139,7 +139,7 @@ class TestChatEndpoint:
                 "retrieved_sources": [],
             }
 
-        monkeypatch.setattr(services.reasoning_workflow, "run", fake_run)
+        monkeypatch.setattr(services.react_runner, "run", fake_run)
         response = test_client.post(
             "/api/chat",
             json={
@@ -155,7 +155,7 @@ class TestChatEndpoint:
         """A valid chat remains available when learning-memory recall fails."""
         from api.deps import services
 
-        _patch_workflow(monkeypatch)
+        _patch_agent_runner(monkeypatch)
         recalled_user_ids = []
 
         def record_then_raise(user_id):
@@ -193,7 +193,7 @@ class TestChatEndpoint:
         """A failed explicit-learning write does not make chat unavailable."""
         from api.deps import services
 
-        _patch_workflow(monkeypatch)
+        _patch_agent_runner(monkeypatch)
         store_calls = []
 
         def record_then_raise(user_id, memory_type, key, value, confidence=1.0):
@@ -246,9 +246,9 @@ class TestChatEndpoint:
 
     def test_chat_blocked_input(self, test_client, monkeypatch):
         """POST /api/chat with an emergency input is blocked by pre-checks."""
-        # The workflow should never run for a blocked input, but patch anyway
+        # The Agent runner should never run for a blocked input, but patch anyway
         # so the test cannot accidentally hit the live LLM.
-        _patch_workflow(monkeypatch)
+        _patch_agent_runner(monkeypatch)
         resp = test_client.post(
             "/api/chat",
             json={"message": "Tôi bị đau ngực dữ dội và muốn tự tử", "user_id": "u2"},
@@ -261,7 +261,7 @@ class TestChatEndpoint:
 
     def test_chat_creates_session(self, test_client, monkeypatch):
         """A chat request without a session_id creates a new session."""
-        _patch_workflow(monkeypatch)
+        _patch_agent_runner(monkeypatch)
         resp = test_client.post(
             "/api/chat",
             json={"message": "Huyết áp bình thường là bao nhiêu?", "user_id": "u3"},
@@ -284,7 +284,7 @@ class TestChatEndpoint:
 
     def test_chat_rejects_another_users_session(self, test_client, monkeypatch):
         """A supplied session id cannot be reused under another user id."""
-        _patch_workflow(monkeypatch)
+        _patch_agent_runner(monkeypatch)
         created = test_client.post(
             "/api/chat", json={"message": "Tôi muốn học implant", "user_id": "owner"}
         )
@@ -306,7 +306,7 @@ class TestChatEndpoint:
         self, test_client, monkeypatch
     ):
         """A stream validates session ownership before SSE headers are sent."""
-        _patch_workflow(monkeypatch)
+        _patch_agent_runner(monkeypatch)
         created = test_client.post(
             "/api/chat", json={"message": "Tôi muốn học implant", "user_id": "u1"}
         )
@@ -344,7 +344,7 @@ class TestChatEndpoint:
 
     def test_chat_history_is_scoped_to_owner(self, test_client, monkeypatch):
         """History requires the owning user and hides non-owned sessions."""
-        _patch_workflow(monkeypatch)
+        _patch_agent_runner(monkeypatch)
         created = test_client.post(
             "/api/chat", json={"message": "Tôi muốn học implant", "user_id": "owner"}
         )
@@ -361,7 +361,7 @@ class TestChatEndpoint:
 
     def test_chat_sessions_lists_only_owned_sessions(self, test_client, monkeypatch):
         """GET /api/chat/sessions lists the owner's sessions with counts."""
-        _patch_workflow(monkeypatch)
+        _patch_agent_runner(monkeypatch)
         created = test_client.post(
             "/api/chat", json={"message": "Tôi muốn học implant", "user_id": "owner"}
         )
