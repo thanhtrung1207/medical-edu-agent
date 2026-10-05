@@ -1,3 +1,13 @@
+---
+title: Medical Education AI Agent
+emoji: 🏥
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # Medical Education AI Agent 🏥
 
 AI Agent hỗ trợ giảng dạy y khoa, được xây dựng trên Google Agent Development Kit (ADK).
