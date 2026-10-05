@@ -118,10 +118,23 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
         logger.warning("Context build failed: %s", type(exc).__name__)
 
     # 5. Run the mode-specific runner.
-    if request.mode == "chat":
-        state = await svc.chat_mode_runner.run(request.message, context)
-    else:
-        state = await svc.react_runner.run(request.message, context)
+    try:
+        if request.mode == "chat":
+            state = await svc.chat_mode_runner.run(request.message, context)
+        else:
+            state = await svc.react_runner.run(request.message, context)
+    except Exception as exc:
+        logger.exception("Mode runner failed: %s", type(exc).__name__)
+        fallback = "Đã xảy ra lỗi khi xử lý câu trả lời. Vui lòng thử lại sau."
+        state = {
+            "formatted_answer": fallback,
+            "verified_answer": fallback,
+            "reasoning_steps": [],
+            "citations": [],
+            "retrieved_sources": [],
+            "confidence_score": 0.0,
+            "warnings": [f"RunnerError: {type(exc).__name__}"],
+        }
     answer = (
         state.get("verified_answer")
         or state.get("formatted_answer")

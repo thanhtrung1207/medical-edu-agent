@@ -106,6 +106,25 @@ def test_mode_agent_invokes_react_runner(client, monkeypatch):
     assert resp.json()["answer"] == "agent answer"
 
 
+def test_agent_runner_failure_returns_safe_response(client, monkeypatch):
+    chat_runner, react_runner = _install_runners(monkeypatch)
+
+    async def failing_run(_message, _context):
+        raise RuntimeError("secret provider detail")
+
+    monkeypatch.setattr(react_runner, "run", failing_run)
+    resp = client.post(
+        "/api/chat",
+        json={"message": "deep question", "user_id": "u2", "mode": "agent"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "secret provider detail" not in body["answer"]
+    assert "RunnerError: RuntimeError" in body["warnings"]
+    assert len(chat_runner.calls) == 0
+
+
 def test_mode_unset_defaults_to_agent(client, monkeypatch):
     chat_runner, react_runner = _install_runners(monkeypatch)
     resp = client.post(
