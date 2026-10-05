@@ -120,6 +120,7 @@ def test_agent_runner_failure_returns_safe_response(client, monkeypatch):
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
+    assert "secret provider detail" not in resp.text
     assert "secret provider detail" not in body["answer"]
     assert "RunnerError: RuntimeError" in body["warnings"]
     assert len(chat_runner.calls) == 0
