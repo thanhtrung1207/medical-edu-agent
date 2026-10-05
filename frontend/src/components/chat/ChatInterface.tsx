@@ -8,7 +8,7 @@ import {
   Stethoscope,
   X,
 } from "lucide-react";
-import type { Message } from "@/lib/types";
+import type { ChatMode, Message } from "@/lib/types";
 import { getChatHistory, sendMessage } from "@/lib/api";
 import {
   clearActiveSessionId,
@@ -18,6 +18,7 @@ import {
   setActiveSessionId,
 } from "@/lib/client-identity";
 import { generateId } from "@/lib/utils";
+import { ChatModeToggle } from "./ChatModeToggle";
 import { MessageBubble } from "./MessageBubble";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
@@ -67,6 +68,7 @@ export function ChatInterface({
 }: ChatInterfaceProps = {}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [mode, setMode] = useState<ChatMode>("chat");
   const [isThinking, setIsThinking] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -195,7 +197,12 @@ export function ChatInterface({
     setIsThinking(true);
 
     try {
-      const reply = await sendMessage(trimmed, userId, sessionId ?? undefined);
+      const reply = await sendMessage(
+        trimmed,
+        userId,
+        sessionId ?? undefined,
+        mode,
+      );
       if (!isCurrentConversation()) return;
 
       if (!reply.content?.trim()) {
@@ -433,26 +440,35 @@ export function ChatInterface({
             </button>
           </div>
         )}
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            placeholder="Nhập câu hỏi nha khoa của bạn..."
-            className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-            aria-label="Ô nhập câu hỏi"
-          />
-          <button
-            type="button"
-            onClick={() => void handleSend(input)}
-            disabled={!input.trim() || isThinking || !userId}
-            aria-label="Gửi câu hỏi"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-white transition hover:bg-primary-700 disabled:opacity-50"
-          >
-            <Send className="h-5 w-5" />
-          </button>
+        <div className="mx-auto max-w-3xl">
+          <div className="mb-2 flex items-center justify-between">
+            <ChatModeToggle
+              value={mode}
+              onChange={setMode}
+              disabled={isThinking}
+            />
+          </div>
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              placeholder="Nhập câu hỏi nha khoa của bạn..."
+              className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              aria-label="Ô nhập câu hỏi"
+            />
+            <button
+              type="button"
+              onClick={() => void handleSend(input)}
+              disabled={!input.trim() || isThinking || !userId}
+              aria-label="Gửi câu hỏi"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-white transition hover:bg-primary-700 disabled:opacity-50"
+            >
+              <Send className="h-5 w-5" />
+            </button>
+          </div>
         </div>
         <p className="mx-auto mt-1.5 max-w-3xl text-center text-[11px] text-slate-400 dark:text-slate-500">
           Nhấn Enter để gửi · Shift + Enter để xuống dòng
