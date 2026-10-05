@@ -25,7 +25,7 @@ export function ChatModeToggle({
       <div
         role="group"
         aria-label="Chọn chế độ trả lời"
-        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1"
+        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-900"
       >
         <button
           type="button"
@@ -35,7 +35,7 @@ export function ChatModeToggle({
           className={`${PILL_BASE} ${
             isChat
               ? "bg-primary text-white shadow-sm"
-              : "text-slate-500 hover:bg-white"
+              : "text-slate-500 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-800"
           }`}
         >
           <Sparkles className="h-4 w-4" aria-hidden />
@@ -49,7 +49,7 @@ export function ChatModeToggle({
           className={`${PILL_BASE} ${
             !isChat
               ? "bg-primary text-white shadow-sm"
-              : "text-slate-500 hover:bg-white"
+              : "text-slate-500 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-800"
           }`}
         >
           <Workflow className="h-4 w-4" aria-hidden />
@@ -57,7 +57,7 @@ export function ChatModeToggle({
         </button>
       </div>
       {!isChat && (
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-slate-500 dark:text-slate-400">
           Chậm hơn, phân tích sâu — chạy nhiều bước tra cứu.
         </span>
       )}

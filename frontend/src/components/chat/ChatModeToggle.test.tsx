@@ -15,6 +15,20 @@ describe("ChatModeToggle", () => {
     expect(agentPill).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("includes dark-mode contrast classes", () => {
+    render(<ChatModeToggle value="agent" onChange={() => {}} />);
+
+    expect(
+      screen.getByRole("group", { name: /chọn chế độ/i }),
+    ).toHaveClass("dark:bg-slate-900");
+    expect(screen.getByRole("button", { name: /Chat/ })).toHaveClass(
+      "dark:text-slate-300",
+    );
+    expect(screen.getByText(/phân tích sâu/i)).toHaveClass(
+      "dark:text-slate-400",
+    );
+  });
+
   it("fires onChange with the opposite mode when a pill is clicked", () => {
     const onChange = vi.fn();
     render(<ChatModeToggle value="chat" onChange={onChange} />);
