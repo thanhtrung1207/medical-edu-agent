@@ -11,11 +11,18 @@ functionality moves into the chat interface via slash-commands. Students can cha
 without a clinical record; the record is required only when a slash-command needs clinical
 context.
 
+### Privacy Notice
+
+This is a **learning tool** — students fill in fictional patient data to practice clinical
+documentation. The wizard displays a disclaimer: *"Đây là bệnh án giả định cho mục đích
+học tập. Không nhập thông tin bệnh nhân thật."* The serialize function strips PII fields
+(`ho_ten`, `sdt`, `dia_chi`) before sending to the AI (see §2.5).
+
 ## Architecture
 
-- **Frontend-only slash-command system** with an extensible registry (no backend changes
-  for command routing — commands compose a structured text message and send it through the
-  existing `/api/chat` endpoint).
+- **Frontend-driven slash-command system** with an extensible registry (commands compose
+  a structured text message and send it through the existing `/api/chat` endpoint; one
+  optional `command` field is added to `ChatRequest` — see §6).
 - **Two clinical record schemas** (Phục Hình Cố Định and Phục Hình Tháo Lắp) rendered as
   a 5-step stepper wizard inline in the chat message area.
 - **Interactive dental chart** with per-tooth status annotation, replacing the simple
@@ -27,7 +34,7 @@ context.
 - Next.js App Router (existing)
 - React state + localStorage for clinical record persistence (same pattern as current `case-storage.ts`)
 - Tailwind CSS (existing)
-- No new backend endpoints or dependencies
+- One additive backend change: optional `command` field on `ChatRequest` (see §6)
 
 ---
 
@@ -100,8 +107,7 @@ When a command is selected:
   inline in the chat area with the schema identified by `formSchemaId`.
 - `handler = "send-message"`: if `requiresClinicalRecord` and no active record exists, show
   a toast "Vui lòng tạo bệnh án trước" and auto-insert `/benh-an-co-dinh` into the textarea.
-  Otherwise, compose a message: `[serialized clinical record text]\n\n---\nYêu cầu: [command label]`
-  and send it through the existing `handleSend` flow.
+  Otherwise, send a **short instruction message** (see §2.7 Message Sending Strategy).
 
 ### 1.3 Integration with ChatInterface
 
@@ -111,6 +117,8 @@ New state:
 - `slashMenuOpen: boolean`
 - `slashQuery: string` (characters typed after `/`)
 - `activeClinicalRecord: ClinicalRecordData | null` (persisted to localStorage)
+- `clinicalRecordSentInSession: boolean` — tracks whether the full serialized text has
+  already been sent in the current chat session (reset on page load / session switch)
 - `wizardOpen: boolean`
 - `wizardSchemaId: string | null`
 
@@ -134,7 +142,15 @@ File: `frontend/src/lib/clinical-record/schemas.ts`
 Reuses the existing pattern from `case-schemas.ts` but with richer field types.
 
 ```ts
-export type FieldType = "text" | "textarea" | "select" | "radio" | "multi-checkbox" | "dental-chart";
+export type FieldType =
+  | "text"
+  | "textarea"
+  | "select"
+  | "radio"
+  | "multi-checkbox"
+  | "dental-chart"
+  | "radio-with-other"    // radio group + free-text input when "Khác" selected
+  | "select-with-text";   // select dropdown + paired text input (e.g., Kennedy class + variant)
 
 export interface FieldDef {
   id: string;
@@ -142,6 +158,7 @@ export interface FieldDef {
   type: FieldType;
   placeholder?: string;
   options?: { value: string; label: string }[];
+  pairedTextLabel?: string;  // label for the companion text input (radio-with-other / select-with-text)
   required?: boolean;
   half?: boolean;   // render at 50% width in a 2-column grid
 }
@@ -157,19 +174,19 @@ export interface ClinicalRecordSchema {
   id: string;                  // "co-dinh" | "thao-lap"
   title: string;
   steps: WizardStep[];
-  sampleData?: Record<string, string | string[]>;
+  sampleData?: Record<string, unknown>;
 }
 ```
 
 ### 2.2 Schema: Phục Hình Cố Định (`co-dinh`)
 
-5 steps, approximately 45 fields total:
+5 steps, 49 fields total:
 
 **Step 1 — Hành chính** (7 fields):
 `ho_ten` (text, half), `nam_sinh` (text, half), `gioi_tinh` (radio: Nam/Nữ, half),
 `nghe_nghiep` (text, half), `dia_chi` (text), `sdt` (text, half), `ngay_kham` (text, half).
 
-**Step 2 — Bệnh sử & Khám lâm sàng** (15 fields):
+**Step 2 — Bệnh sử & Khám lâm sàng** (16 fields):
 `ly_do_kham` (textarea), `dien_tien_rang` (textarea), `suc_khoe_chung` (radio: Tốt/Trung bình/Yếu),
 `benh_nen` (multi-checkbox: Tiểu đường/THA/Tim mạch/Khác),
 `vs_rang_mieng` (radio: Tốt/TB/Kém), `voi_rang` (radio: Không/Ít/Nhiều),
@@ -204,31 +221,61 @@ export interface ClinicalRecordSchema {
 
 ### 2.3 Schema: Phục Hình Tháo Lắp (`thao-lap`)
 
-5 steps, approximately 50 fields. Shares Step 1 and Step 5 with Cố Định. Differences:
+5 steps, 60 fields total. Shares Step 1 and Step 5 with Cố Định. Steps 2–4 extend or
+replace the Cố Định equivalents. Every field is listed below — no implicit "same as above".
 
-**Step 2** — adds 12 fields for old denture assessment:
-`ham_gia_cu` (radio: Không/Có HT/Có HD/Tốt HT/Tốt HD),
+**Step 1 — Hành chính** (7 fields, identical to Cố Định):
+`ho_ten` (text, half), `nam_sinh` (text, half), `gioi_tinh` (radio: Nam/Nữ, half),
+`nghe_nghiep` (text, half), `dia_chi` (text), `sdt` (text, half), `ngay_kham` (text, half).
+
+**Step 2 — Bệnh sử, Khám lâm sàng & Hàm giả cũ** (28 fields):
+
+*Bệnh sử & lâm sàng (16 fields, same as Cố Định Step 2):*
+`ly_do_kham` (textarea), `dien_tien_rang` (textarea), `suc_khoe_chung` (radio: Tốt/Trung bình/Yếu),
+`benh_nen` (multi-checkbox: Tiểu đường/THA/Tim mạch/Khác),
+`vs_rang_mieng` (radio: Tốt/TB/Kém), `voi_rang` (radio: Không/Ít/Nhiều),
+`vet_dinh` (radio: Không/Ít/Nhiều),
+`can_xung_mat` (text), `ba_tang_mat` (text), `hinh_dang_mat` (radio: Vuông/Bầu dục/Tam giác),
+`net_mat_nghieng` (radio: Thẳng/Nhô/Lõm), `nang_do_moi` (radio: Có/Không),
+`mo_mem_da_niem` (textarea),
+`tieng_keu_khop` (text), `van_dong_ha_ngam` (text), `truong_luc_co` (radio: Bình thường/Mạnh/Yếu).
+
+*Đánh giá hàm giả cũ (12 fields):*
+`ham_gia_cu` (radio: Không/Có HT/Có HD/Có cả HT+HD),
 `cach_su_dung` (radio: Mang ngày/Mang ngày đêm/Ăn không mang),
-`ly_do_lam_lai` (radio: Thẩm mỹ/Chức năng/Khác + text),
+`ly_do_lam_lai` (radio-with-other: Thẩm mỹ/Chức năng/Khác),
 `thoi_gian_mang` (text), `kich_thuoc_doc_can_khop_cu` (text), `duong_giua` (text),
 `tinh_trang_rang_gia` (text), `tinh_trang_nen_ham_gia` (text),
 `can_sang_ben` (text), `can_toi` (text),
 `nhan_xet_ham_gia_cu` (textarea), `ky_vong_ham_gia_moi` (textarea).
 
-**Step 3** — adds Kennedy classification fields:
-`kennedy_ham_tren_ban_dau` (select: Loại I-IV + text biến thể),
-`kennedy_ham_tren_sau_dieu_tri` (select + text),
-`kennedy_ham_duoi_ban_dau` (select + text),
-`kennedy_ham_duoi_sau_dieu_tri` (select + text),
+**Step 3 — Khám trong miệng & Phân loại Kennedy** (17 fields):
+
+*Khám trong miệng (12 fields, same as Cố Định Step 3):*
+`dental_chart` (dental-chart), `ghi_chu_rang` (textarea), `mo_nha_chu_chung` (textarea),
+`sap_xep_ham_tren` (radio: Đều/Lệch lạc), `sap_xep_ham_duoi` (radio: Đều/Lệch lạc),
+`duong_cong_spee` (text), `duong_cong_wilson` (text), `tuong_quan_khop_can` (textarea),
+`can_phu_chia_cheo` (text),
+`long_mui_toi_da` (radio: Vững ổn/Không vững ổn),
+`huong_dan_can` (text), `ph_cu_tren_mieng` (textarea).
+
+*Phân loại Kennedy (5 fields):*
+`kennedy_ham_tren_ban_dau` (select-with-text: Loại I/II/III/IV — text field: biến thể),
+`kennedy_ham_tren_sau_dieu_tri` (select-with-text: Loại I/II/III/IV — text field: biến thể),
+`kennedy_ham_duoi_ban_dau` (select-with-text: Loại I/II/III/IV — text field: biến thể),
+`kennedy_ham_duoi_sau_dieu_tri` (select-with-text: Loại I/II/III/IV — text field: biến thể),
 `hinh_the_mau_rang` (text).
 
-**Step 4** — replaces Cố Định's per-tooth assessment with:
+**Step 4 — Khám vùng phục hình tháo lắp** (6 fields):
 `tuong_quan_hai_ham` (radio: Loại I/II/III),
-`tuong_quan_khop_can_tl` (radio: Tốt/Không tốt + text lý do),
+`tuong_quan_khop_can_tl` (radio-with-other: Tốt/Không tốt — text field: lý do),
 `khoang_ph_doc_tl` (radio: Tốt/Ít/Nhiều),
 `hinh_the_cung_ham_tren` (radio: Vuông/Bầu dục/Tam giác),
 `hinh_the_cung_ham_duoi` (radio: Vuông/Bầu dục/Tam giác),
 `song_ham_vung_mat_rang` (textarea).
+
+**Step 5 — Tóm tắt & Chẩn đoán** (2 fields, identical to Cố Định):
+`tom_tat_benh_an` (textarea, large), `chan_doan_lam_sang` (textarea, large).
 
 ### 2.4 Wizard Component
 
@@ -271,6 +318,12 @@ File: `frontend/src/lib/clinical-record/serialize.ts`
 
 `serializeClinicalRecord(schema: ClinicalRecordSchema, data: Record<string, unknown>): string`
 
+**Privacy anonymization:** The serialized text sent to the AI **strips PII fields**
+(`ho_ten`, `sdt`, `dia_chi`) and replaces them with generic labels. Only age (derived
+from `nam_sinh`), `gioi_tinh`, and `nghe_nghiep` are included — these are clinically
+relevant and non-identifying. The full data remains in `ClinicalRecordData.data` in
+localStorage for the student to review.
+
 Produces structured text sent to the backend:
 
 ```
@@ -278,8 +331,7 @@ Produces structured text sent to the backend:
 Răng liên quan (FDI): 16, 46
 
 [1. HÀNH CHÍNH]
-Họ tên: Nguyễn Văn A | Năm sinh: 1990 | Giới tính: Nam
-Nghề nghiệp: Giáo viên | SĐT: 0901234567
+Tuổi: 36 | Giới tính: Nam | Nghề nghiệp: Giáo viên
 Ngày khám: 06/10/2026
 
 [2. BỆNH SỬ & KHÁM LÂM SÀNG]
@@ -320,6 +372,27 @@ Functions: `saveClinicalRecord()`, `getClinicalRecord(id)`, `listClinicalRecords
 
 Migrates old `dcs_saved_cases` data: on first load, if old data exists, convert to new format
 and delete old key.
+
+### 2.7 Message Sending Strategy
+
+Sending the full serialized record on every slash-command wastes tokens and creates giant
+chat bubbles. Instead:
+
+| Event | What is sent | `command` field |
+|-------|-------------|-----------------|
+| Wizard submit (first time in session) | Full anonymized serialized text | `"benh-an-co-dinh"` or `"benh-an-thao-lap"` |
+| Wizard re-submit after edit ("Sửa") | Full anonymized serialized text (updated) | same |
+| `/chan-doan`, `/ke-hoach-dieu-tri`, etc. | `"Yêu cầu: [command label]"` (short string only) | command id |
+| Same command, but no record sent yet this session | Auto-redirect: toast + open `/benh-an-co-dinh` | — |
+
+**Why this works:** The backend maintains session history. Once the full record is in the
+conversation, subsequent messages can reference it by instruction alone — the AI already
+has it in context.
+
+**Chat bubble display:**
+- Record submission: compact bubble showing `"📋 Bệnh án Cố Định đã gửi"` with a
+  collapsible "Xem chi tiết" toggle (raw text hidden by default).
+- Analysis commands: normal user message bubble showing just the instruction text.
 
 ---
 
@@ -474,11 +547,24 @@ frontend/src/lib/case-storage.ts
 
 ## 6. Backend Impact
 
-**None.** The backend `/api/chat` endpoint receives structured text messages as before. The
-`mode` field (chat/agent) continues to control which runner processes the request. The
-serialized clinical record is sent as the message body, optionally prefixed with the
-analysis instruction (e.g., "Yêu cầu: Phân tích chẩn đoán").
+**Minimal.** One additive change to `ChatRequest`:
 
+```ts
+// frontend/src/lib/types.ts  (existing ChatRequest)
+export interface ChatRequest {
+  message: string;
+  mode: "chat" | "agent";
+  session_id?: string;
+  command?: string;   // NEW — slash-command id, e.g. "chan-doan"
+}
+```
+
+The backend `/api/chat` endpoint receives the same structured text messages as before.
+The new `command` field is optional and ignored by the current backend — it exists so the
+frontend can distinguish "clinical record submission" from "analysis request" without
+parsing message text, and so a future backend version can route on it explicitly.
+
+The `mode` field (chat/agent) continues to control which runner processes the request.
 The existing case study sub-agent (`case_analyst`) in the ADK framework continues to be
 routed to by the root agent when the message contains clinical case content.
 
