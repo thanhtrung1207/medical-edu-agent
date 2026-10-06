@@ -168,17 +168,11 @@ def _build_prompt(
         _UNTRUSTED_FENCE_CLOSE,
         "--- END UNTRUSTED DATA (escaped) ---",
     )
-    if prompt_blocks:
-        prefix = "\n\n".join((*prompt_blocks, history_block))
-        return (
-            f"{prefix}\n\n{_SYSTEM_PROMPT}\n\nCÂU HỎI: {message}\n\n"
-            f"KẾT QUẢ WEB SEARCH:\n{_UNTRUSTED_FENCE_OPEN}\n"
-            f"{untrusted_results}\n{_UNTRUSTED_FENCE_CLOSE}\n\n"
-            "Hãy tổng hợp câu trả lời dựa trên các kết quả trên."
-        )
-    legacy_history_block = f"\n\n{history_block}\n" if history_block else ""
+    context_blocks = [*prompt_blocks, history_block]
+    context_suffix = "\n\n".join(block for block in context_blocks if block)
+    context_section = f"\n\n{context_suffix}" if context_suffix else ""
     return (
-        f"{_SYSTEM_PROMPT}{legacy_history_block}\n\nCÂU HỎI: {message}\n\n"
+        f"{_SYSTEM_PROMPT}{context_section}\n\nCÂU HỎI: {message}\n\n"
         f"KẾT QUẢ WEB SEARCH:\n{_UNTRUSTED_FENCE_OPEN}\n"
         f"{untrusted_results}\n{_UNTRUSTED_FENCE_CLOSE}\n\n"
         "Hãy tổng hợp câu trả lời dựa trên các kết quả trên."

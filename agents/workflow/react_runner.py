@@ -367,11 +367,11 @@ def _build_step_prompt(
     traj_block = _render_trajectory_structure(trajectory)
     observations_block = _render_observations_section(trajectory)
     observations_suffix = f"\n\n{observations_block}" if observations_block else ""
-    context_prefix = "\n\n".join((*prompt_blocks, history_block))
-    prefix = f"{context_prefix}\n\n" if prompt_blocks else ""
-    legacy_history_block = f"\n\n{history_block}\n" if history_block else ""
+    context_blocks = [*prompt_blocks, history_block]
+    context_suffix = "\n\n".join(block for block in context_blocks if block)
+    context_section = f"\n\n{context_suffix}" if context_suffix else ""
     return (
-        f"{prefix}{system_prompt}{legacy_history_block}\n\nCÂU HỎI: {message}\n\n"
+        f"{system_prompt}{context_section}\n\nCÂU HỎI: {message}\n\n"
         f"TRAJECTORY HIỆN TẠI:\n{traj_block}"
         f"{observations_suffix}\n\n"
         "Trả về đúng một JSON step tiếp theo."
