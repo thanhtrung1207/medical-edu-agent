@@ -269,6 +269,12 @@ export interface ClinicalRecordSchema {
   sampleData?: Record<string, unknown>;
 }
 
+export function isFieldVisible(field: FieldDef, data: Record<string, unknown>): boolean {
+  if (!field.visibleWhen) return true;
+  const value = data[field.visibleWhen.fieldId];
+  return Boolean(value) && value !== field.visibleWhen.notEquals;
+}
+
 // --- Shared step builders ---
 
 const STEP_1_HANH_CHINH: FieldDef[] = [
@@ -734,6 +740,11 @@ describe("buildClinicalSummary", () => {
     expect(result).toContain("36");
     expect(result).toContain("Nam");
   });
+
+  it("omits age when nam_sinh is empty or out of range", () => {
+    expect(buildClinicalSummary(coDinhSchema, { nam_sinh: "", gioi_tinh: "Nam" })).not.toContain("2026 tuổi");
+    expect(buildClinicalSummary(coDinhSchema, { nam_sinh: "1800", gioi_tinh: "Nam" })).not.toContain("226 tuổi");
+  });
 });
 ```
 
@@ -811,8 +822,12 @@ export function buildClinicalSummary(
   const chart = (data.dental_chart ?? {}) as Record<string, ToothStatus>;
   const toothSection = buildToothSection(chart);
 
-  const namSinh = Number(data.nam_sinh);
-  const age = !isNaN(namSinh) ? new Date().getFullYear() - namSinh : null;
+  const namSinhText = String(data.nam_sinh ?? "");
+  const namSinh = Number(namSinhText);
+  const currentYear = new Date().getFullYear();
+  const age = /^\d{4}$/.test(namSinhText) && namSinh >= 1900 && namSinh <= currentYear
+    ? currentYear - namSinh
+    : null;
   const gioiTinh = data.gioi_tinh as string | undefined;
   const demographics = [age !== null ? `${age} tuổi` : null, gioiTinh].filter(Boolean).join(", ");
 
@@ -911,10 +926,9 @@ describe("serializeClinicalRecord", () => {
     expect(result).toContain("Giáo viên");
   });
 
-  it("derives age from nam_sinh", () => {
-    const data = { nam_sinh: "1990", gioi_tinh: "Nữ" };
-    const result = serializeClinicalRecord(coDinhSchema, data);
-    expect(result).toContain("Tuổi: 36");
+  it("derives age from valid nam_sinh and omits it when invalid", () => {
+    expect(serializeClinicalRecord(coDinhSchema, { nam_sinh: "1990", gioi_tinh: "Nữ" })).toContain("Tuổi: 36");
+    expect(serializeClinicalRecord(coDinhSchema, { nam_sinh: "", gioi_tinh: "Nữ" })).not.toContain("Tuổi: 2026");
   });
 
   it("includes dental chart with conditions and notes", () => {
@@ -954,7 +968,7 @@ Expected: FAIL — module not found.
 
 ```ts
 // frontend/src/lib/clinical-record/serialize.ts
-import type { ClinicalRecordSchema } from "./schemas";
+import { isFieldVisible, type ClinicalRecordSchema } from "./schemas";
 import type { ToothStatus } from "./types";
 import { scrubPII } from "./scrub";
 
@@ -999,8 +1013,12 @@ export function serializeClinicalRecord(
 
   lines.push("");
   lines.push("[1. HÀNH CHÍNH]");
-  const namSinh = Number(data.nam_sinh);
-  const age = !isNaN(namSinh) ? new Date().getFullYear() - namSinh : null;
+  const namSinhText = String(data.nam_sinh ?? "");
+  const namSinh = Number(namSinhText);
+  const currentYear = new Date().getFullYear();
+  const age = /^\d{4}$/.test(namSinhText) && namSinh >= 1900 && namSinh <= currentYear
+    ? currentYear - namSinh
+    : null;
   const adminParts = [
     age !== null ? `Tuổi: ${age}` : null,
     data.gioi_tinh ? `Giới tính: ${data.gioi_tinh}` : null,
@@ -1022,10 +1040,7 @@ export function serializeClinicalRecord(
       const val = data[f.id];
       if (val === undefined || val === null || val === "") continue;
 
-      if (f.visibleWhen) {
-        const controlVal = data[f.visibleWhen.fieldId];
-        if (!controlVal || controlVal === f.visibleWhen.notEquals) continue;
-      }
+      if (!isFieldVisible(f, data)) continue;
 
       if (Array.isArray(val)) {
         lines.push(`${f.label}: ${(val as string[]).join(", ")}`);
@@ -1421,8 +1436,8 @@ Expected: No errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/src/lib/types.ts
-git commit -m "feat(types): add command + clinical_context to ChatRequest"
+git add frontend/src/lib/types.ts frontend/src/lib/api.ts
+git commit -m "feat(api): add slash-command request metadata"
 ```
 
 ---
@@ -1433,7 +1448,7 @@ git commit -m "feat(types): add command + clinical_context to ChatRequest"
 - Modify: `api/models.py`
 - Modify: `memory/context_builder.py`
 - Modify: `api/chat.py`
-- Create: `api/command_hints.py`
+- Create: `agents/workflow/command_hints.py`
 - Create: `tests/test_clinical_context.py`
 
 **Context:** `build_context()` currently takes `(self, user_id, session_id, current_topic=None)` and returns a dict with keys `conversation_history`, `user_preferences`, `relevant_memories`, `user_profile_summary`. The `ChatRequest` Pydantic model has fields: `message`, `session_id`, `user_id`, `stream`, `mode`.
@@ -1444,56 +1459,37 @@ git commit -m "feat(types): add command + clinical_context to ChatRequest"
 # tests/test_clinical_context.py
 """Tests for clinical_context backend integration."""
 import pytest
-from fastapi.testclient import TestClient
+from pydantic import ValidationError
+from api.models import ChatRequest
 
 
-def test_chat_request_accepts_clinical_context(client: TestClient):
-    """clinical_context field is accepted and does not break existing flow."""
-    resp = client.post("/api/chat", json={
+def valid_payload(**overrides):
+    return {
         "message": "Xin chào",
+        "user_id": "test-user",
         "mode": "chat",
-        "session_id": "test-session",
-        "clinical_context": "36 tuổi, Nam, Răng: 16(sâu), 46(mất)",
-    })
-    assert resp.status_code in (200, 500)  # 500 OK if LLM unavailable in test
+        **overrides,
+    }
 
 
-def test_chat_request_accepts_command(client: TestClient):
-    resp = client.post("/api/chat", json={
-        "message": "Yêu cầu: Phân tích chẩn đoán",
-        "mode": "agent",
-        "session_id": "test-session",
-        "command": "chan-doan",
-        "clinical_context": "36 tuổi, Nam",
-    })
-    assert resp.status_code in (200, 500)
+def test_chat_request_accepts_clinical_context_and_command():
+    request = ChatRequest.model_validate(valid_payload(
+        command="chan-doan",
+        clinical_context="36 tuổi, Nam, Răng: 16(sâu), 46(mất)",
+    ))
+    assert request.command == "chan-doan"
+    assert request.clinical_context.startswith("36 tuổi")
 
 
-def test_unknown_command_rejected(client: TestClient):
-    resp = client.post("/api/chat", json={
-        "message": "test",
-        "mode": "chat",
-        "command": "unknown-command",
-    })
-    assert resp.status_code == 422
+@pytest.mark.parametrize("command", ["unknown-command", "benh-an-co-dinh", "benh-an-thao-lap"])
+def test_invalid_or_form_wizard_command_rejected(command):
+    with pytest.raises(ValidationError):
+        ChatRequest.model_validate(valid_payload(command=command))
 
 
-def test_clinical_context_too_long_rejected(client: TestClient):
-    resp = client.post("/api/chat", json={
-        "message": "test",
-        "mode": "chat",
-        "clinical_context": "x" * 2001,
-    })
-    assert resp.status_code == 422
-
-
-def test_form_wizard_commands_rejected(client: TestClient):
-    resp = client.post("/api/chat", json={
-        "message": "test",
-        "mode": "chat",
-        "command": "benh-an-co-dinh",
-    })
-    assert resp.status_code == 422
+def test_clinical_context_too_long_rejected():
+    with pytest.raises(ValidationError):
+        ChatRequest.model_validate(valid_payload(clinical_context="x" * 2001))
 
 
 def test_context_builder_includes_clinical_context():
@@ -1534,38 +1530,37 @@ Expected: FAIL — import errors or validation errors.
 
 - [ ] **Step 3: Add command and clinical_context to ChatRequest Pydantic model**
 
-In `api/models.py`, add to the `ChatRequest` class:
+In `api/models.py`, **preserve every existing field** (`message`, `session_id`, required `user_id`, `stream`, `mode`) and add only the two new fields. This repository uses Pydantic v2 (`pydantic>=2.0.0`), so use `field_validator`, not v1 `@validator`:
 
 ```python
-from typing import Optional, Literal
+from pydantic import BaseModel, Field, field_validator
 
 VALID_COMMANDS = {"chan-doan", "ke-hoach-dieu-tri", "so-sanh", "ket-thuc"}
 
 class ChatRequest(BaseModel):
+    # Keep existing fields unchanged.
     message: str
-    mode: Literal["chat", "agent"] = "agent"
     session_id: Optional[str] = None
-    user_id: Optional[str] = None
+    user_id: str = Field(min_length=1, max_length=128)
+    stream: bool = False
+    mode: Literal["chat", "agent"] = "agent"
+
+    # Additive fields.
     command: Optional[str] = None
-    clinical_context: Optional[str] = None
+    clinical_context: Optional[str] = Field(default=None, max_length=2000)
 
-    @validator("command")
-    def validate_command(cls, v):
-        if v is not None and v not in VALID_COMMANDS:
-            raise ValueError(f"Unknown command: {v}. Valid: {VALID_COMMANDS}")
-        return v
-
-    @validator("clinical_context")
-    def validate_clinical_context(cls, v):
-        if v is not None and len(v) > 2000:
-            raise ValueError("clinical_context exceeds 2000 character limit")
-        return v
+    @field_validator("command")
+    @classmethod
+    def validate_command(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value not in VALID_COMMANDS:
+            raise ValueError(f"Unknown command: {value}")
+        return value
 ```
 
 - [ ] **Step 4: Create command_hints.py**
 
 ```python
-# api/command_hints.py
+# agents/workflow/command_hints.py
 """Per-command prompt hints for the [LỆNH] block."""
 
 COMMAND_HINTS: dict[str, tuple[str, str]] = {
@@ -1651,7 +1646,7 @@ Expected: ALL PASS.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add api/models.py api/command_hints.py api/chat.py memory/context_builder.py tests/test_clinical_context.py
+git add api/models.py agents/workflow/command_hints.py api/chat.py memory/context_builder.py tests/test_clinical_context.py
 git commit -m "feat(backend): add command + clinical_context to ChatRequest with validation and context builder"
 ```
 
@@ -1699,7 +1694,7 @@ Expected: FAIL.
 In `agents/workflow/chat_mode.py`, the `_build_prompt` function (around line 126) assembles the prompt with `history_block`. After extracting history, add clinical context and command blocks:
 
 ```python
-from api.command_hints import build_command_block, build_clinical_context_block
+from agents.workflow.command_hints import build_command_block, build_clinical_context_block
 
 # In _build_prompt, after history_block is built:
 clinical_ctx = context.get("clinical_context", "") if isinstance(context, dict) else ""
@@ -1720,24 +1715,37 @@ In `agents/workflow/react_runner.py`, the `_build_step_prompt` method (around li
 
 In each of `agents/workflow/nodes/confirm_node.py`, `think_node.py`, `answer_node.py`:
 
-Each node reads `state.get("context", {}).get("conversation_history", [])` and appends a `--- LỊCH SỬ HỘI THOẠI ---` block. Add parallel reads for clinical context:
+Each node reads `state.get("context", {}).get("conversation_history", [])` and appends a `--- LỊCH SỬ HỘI THOẠI ---` block. Add parallel reads for clinical context, and place the blocks **before** the history block, as required by the spec:
 
 ```python
-from api.command_hints import build_command_block, build_clinical_context_block
+from agents.workflow.command_hints import build_command_block, build_clinical_context_block
 
-# In each node's prompt builder, after the history block:
 clinical_ctx = state.get("context", {}).get("clinical_context", "")
 command = state.get("context", {}).get("command", "")
+context_prefix = "\n\n".join(
+    block for block in (
+        build_command_block(command) if command else "",
+        build_clinical_context_block(clinical_ctx) if clinical_ctx else "",
+    ) if block
+)
 
-if command:
-    prompt += f"\n\n{build_command_block(command)}"
-if clinical_ctx:
-    prompt += f"\n\n{build_clinical_context_block(clinical_ctx)}"
+# Build final prompt in this order:
+prompt = "\n\n".join(part for part in (context_prefix, prompt, history_block) if part)
 ```
 
-- [ ] **Step 6: Run full backend test suite**
+- [ ] **Step 6: Preserve all ContextBuilder call paths and test every prompt consumer**
 
-Run: `python -m pytest tests/test_clinical_context.py -v`
+`build_prompt_context()` in `memory/context_builder.py` is another internal caller of `build_context()`. Preserve its existing behavior by calling `build_context(user_id, session_id, current_topic)` without clinical context; do not change its 2000-character test-only truncation contract.
+
+Add focused assertions to existing runner/node suites:
+- `tests/test_chat_mode_runner.py`: `[LỆNH]` and clinical data appear before `NGỮ CẢNH TRƯỚC`.
+- `tests/test_react_runner.py`: `[LỆNH]` and clinical data appear before `NGỮ CẢNH`.
+- `tests/test_workflow.py`: each of confirm/think/answer receives a `state["context"]` with command + clinical context and includes both blocks before `--- LỊCH SỬ HỘI THOẠI ---`.
+
+Run:
+```bash
+python -m pytest tests/test_clinical_context.py tests/test_chat_mode_runner.py tests/test_react_runner.py tests/test_workflow.py tests/test_memory.py -v
+```
 Expected: ALL PASS.
 
 - [ ] **Step 7: Commit**
@@ -1813,6 +1821,13 @@ describe("DentalChart", () => {
     fireEvent.click(screen.getByRole("button", { name: "Răng 11" }));
     expect(screen.getByText("S")).toBeInTheDocument();  // Sâu
     expect(screen.getByText("M")).toBeInTheDocument();  // Mất
+  });
+
+  it("uses two horizontally scrollable jaw rows for mobile", () => {
+    const { container } = render(<DentalChart value={{}} onChange={vi.fn()} />);
+    const rows = container.querySelectorAll("[data-jaw-row]");
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row.className).toContain("overflow-x-auto");
   });
 });
 ```
@@ -1931,7 +1946,7 @@ export function DentalChart({ value, onChange, disabled }: DentalChartProps) {
 
   function renderRow(teeth: number[]) {
     return (
-      <div className="flex gap-1 overflow-x-auto">
+      <div data-jaw-row className="flex gap-1 overflow-x-auto">
         {teeth.map((fdi) => {
           const status = value[fdi];
           const dotColor = status && status.condition !== "normal"
@@ -2127,7 +2142,7 @@ Create `frontend/src/components/clinical-record/WizardStepRenderer.tsx`:
 ```tsx
 "use client";
 import { useEffect } from "react";
-import type { WizardStep, FieldDef } from "@/lib/clinical-record/schemas";
+import { isFieldVisible, type WizardStep } from "@/lib/clinical-record/schemas";
 import { WizardField } from "./WizardField";
 
 interface WizardStepRendererProps {
@@ -2135,12 +2150,6 @@ interface WizardStepRendererProps {
   data: Record<string, unknown>;
   errors: Record<string, string>;
   onChange: (fieldId: string, value: unknown) => void;
-}
-
-function isFieldVisible(field: FieldDef, data: Record<string, unknown>): boolean {
-  if (!field.visibleWhen) return true;
-  const controlValue = data[field.visibleWhen.fieldId];
-  return !!controlValue && controlValue !== field.visibleWhen.notEquals;
 }
 
 export function WizardStepRenderer({ step, data, errors, onChange }: WizardStepRendererProps) {
@@ -2186,37 +2195,151 @@ git commit -m "feat(wizard): add WizardField (all 8 field types) and WizardStepR
 
 ---
 
-### Task 13: ClinicalRecordWizard component
+### Task 13: ClinicalRecordWizard component with behavior tests
 
 **Files:**
 - Create: `frontend/src/components/clinical-record/ClinicalRecordWizard.tsx`
+- Create: `frontend/src/components/clinical-record/ClinicalRecordWizard.test.tsx`
 
-- [ ] **Step 1: Implement ClinicalRecordWizard**
+- [ ] **Step 1: Write failing wizard tests**
 
-The wizard component orchestrates the 5-step form. Key behaviors:
-- `useReducer` with `WizardState { currentStep, data, errors }`
-- Stepper header with 5 numbered circles (uses `shortLabel` on mobile via media query)
-- Disclaimer banner at top: *"Đây là bệnh án giả định cho mục đích học tập. Không nhập thông tin bệnh nhân thật."*
-- Autosave draft to localStorage on step transitions and debounced (2s) on field changes
-- Draft key format: `unident_wizard_draft_{schemaId}_{recordId}` or `unident_wizard_draft_{schemaId}_new`
-- On mount: restore from draft if exists and no `initialData`
-- On submit: delete draft, call `onSubmit` with `ClinicalRecordData`
-- On cancel: preserve draft, show confirm if data non-empty
-- Validation on "Tiếp theo": check `required` fields for current step. For `dental_chart`, require ≥1 tooth with `condition !== "normal"`. For `nam_sinh`, validate 4 digits in range `[1900, currentYear]`.
-- Navigation footer: Hủy / Quay lại / Tiếp theo (or Gửi bệnh án on step 5)
+```tsx
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+import { ClinicalRecordWizard } from "./ClinicalRecordWizard";
 
-The implementation should follow the `CaseForm` component pattern at `frontend/src/components/case/CaseForm.tsx` for general structure, but use the new `WizardStepRenderer` for field rendering.
+const onSubmit = vi.fn();
+const onCancel = vi.fn();
 
-- [ ] **Step 2: Verify compilation**
+function renderWizard() {
+  return render(<ClinicalRecordWizard schemaId="co-dinh" onSubmit={onSubmit} onCancel={onCancel} />);
+}
+
+describe("ClinicalRecordWizard", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    onSubmit.mockReset();
+    onCancel.mockReset();
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("blocks next step and shows inline errors for required fields", () => {
+    renderWizard();
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp theo" }));
+    expect(screen.getByText(/Năm sinh/)).toBeInTheDocument();
+    expect(screen.getByText(/Giới tính/)).toBeInTheDocument();
+  });
+
+  it("rejects invalid birth years and accepts the current year", () => {
+    renderWizard();
+    const year = screen.getByLabelText(/Năm sinh/);
+    fireEvent.change(year, { target: { value: "1800" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp theo" }));
+    expect(screen.getByText(/1900/)).toBeInTheDocument();
+  });
+
+  it("debounces a draft save after field input", () => {
+    renderWizard();
+    fireEvent.change(screen.getByLabelText(/Năm sinh/), { target: { value: "1990" } });
+    act(() => vi.advanceTimersByTime(2000));
+    expect(localStorage.getItem("unident_wizard_draft_co-dinh_new")).toContain("1990");
+  });
+
+  it("restores a new-record draft on mount", () => {
+    localStorage.setItem("unident_wizard_draft_co-dinh_new", JSON.stringify({ currentStep: 0, data: { nam_sinh: "1990" } }));
+    renderWizard();
+    expect(screen.getByLabelText(/Năm sinh/)).toHaveValue("1990");
+  });
+
+  it("preserves draft when confirmed cancel closes the wizard", () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderWizard();
+    fireEvent.change(screen.getByLabelText(/Năm sinh/), { target: { value: "1990" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hủy" }));
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(localStorage.getItem("unident_wizard_draft_co-dinh_new")).toContain("1990");
+    confirmSpy.mockRestore();
+  });
+
+  it("requires at least one non-normal tooth", () => {
+    renderWizard();
+    fireEvent.change(screen.getByLabelText(/Năm sinh/), { target: { value: "1990" } });
+    fireEvent.click(screen.getByLabelText("Nam"));
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp theo" }));
+    fireEvent.change(screen.getByLabelText(/Lý do đến khám/), { target: { value: "Đau răng" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp theo" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp theo" }));
+    expect(screen.getByText("Chọn ít nhất một răng có tình trạng bất thường.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Răng 16" }));
+    fireEvent.click(screen.getByRole("button", { name: /Sâu/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp theo" }));
+    expect(screen.getByText(/Khám vùng phục hình/)).toBeInTheDocument();
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd frontend && npx vitest run src/components/clinical-record/ClinicalRecordWizard.test.tsx`
+Expected: FAIL — component not found.
+
+- [ ] **Step 3: Implement ClinicalRecordWizard**
+
+Implement with `useReducer` state `{ currentStep, data, errors }` and these exact helpers:
+
+```ts
+const DRAFT_DELAY_MS = 2000;
+
+function draftKey(schemaId: string, recordId?: string): string {
+  return `unident_wizard_draft_${schemaId}_${recordId ?? "new"}`;
+}
+
+function validateStep(step: WizardStep, data: Record<string, unknown>): Record<string, string> {
+  const errors: Record<string, string> = {};
+  for (const field of step.fields) {
+    if (!field.required) continue;
+    if (field.id === "dental_chart") {
+      const chart = (data.dental_chart ?? {}) as Record<string, ToothStatus>;
+      if (!Object.values(chart).some((tooth) => tooth.condition !== "normal")) {
+        errors.dental_chart = "Chọn ít nhất một răng có tình trạng bất thường.";
+      }
+      continue;
+    }
+    if (!data[field.id]) errors[field.id] = `${field.label} là bắt buộc.`;
+  }
+  const year = String(data.nam_sinh ?? "");
+  if (step.fields.some((field) => field.id === "nam_sinh") &&
+      (!/^\d{4}$/.test(year) || Number(year) < 1900 || Number(year) > new Date().getFullYear())) {
+    errors.nam_sinh = `Năm sinh phải từ 1900 đến ${new Date().getFullYear()}.`;
+  }
+  return errors;
+}
+```
+
+Required UI behavior:
+- Banner: `Đây là bệnh án giả định cho mục đích học tập. Không nhập thông tin bệnh nhân thật.`
+- Five numbered stepper circles; use `shortLabel` below `md` breakpoint.
+- Call `WizardStepRenderer` for the current step.
+- Save the draft on every Back/Next transition and from a 2-second debounced `useEffect` on data changes.
+- Restore only when `initialData` is absent. On submit, remove the draft and call `onSubmit` with a new `ClinicalRecordData` (`crypto.randomUUID()`, serialized text from `serializeClinicalRecord`, ISO timestamps).
+- When canceling non-empty data, use the exact confirm text from the spec and retain the draft on confirmation.
+
+- [ ] **Step 4: Run the focused wizard suite**
+
+Run: `cd frontend && npx vitest run src/components/clinical-record/ClinicalRecordWizard.test.tsx`
+Expected: ALL PASS.
+
+- [ ] **Step 5: Verify compilation and commit**
 
 Run: `cd frontend && npx tsc --noEmit`
 Expected: No errors.
 
-- [ ] **Step 3: Commit**
-
 ```bash
-git add frontend/src/components/clinical-record/ClinicalRecordWizard.tsx
-git commit -m "feat(wizard): add ClinicalRecordWizard with 5-step stepper, autosave, and validation"
+git add frontend/src/components/clinical-record/ClinicalRecordWizard.tsx frontend/src/components/clinical-record/ClinicalRecordWizard.test.tsx
+git commit -m "feat(wizard): add tested five-step clinical record wizard"
 ```
 
 ---
@@ -2406,69 +2529,283 @@ git commit -m "feat(chat): add ClinicalRecordBadge with expand/collapse and clos
 
 **Files:**
 - Modify: `frontend/src/components/chat/ChatInterface.tsx`
+- Modify: `frontend/src/components/chat/ChatInterface.test.tsx`
+- Modify: `frontend/src/lib/api.ts` — add an optional `timeoutMs` / AbortSignal path used only by `/ket-thuc`
 
-- [ ] **Step 1: Add new state to ChatInterface**
+- [ ] **Step 1: Write failing ChatInterface integration tests**
 
-Add these state variables:
-- `slashMenuOpen: boolean` — controlled by textarea `onChange`
-- `slashQuery: string` — characters after `/`
-- `activeClinicalRecord: ClinicalRecordData | null` — initialized from `getActiveRecord()` on mount
-- `wizardOpen: boolean`
-- `wizardSchemaId: string | null`
+Extend the existing co-located `ChatInterface.test.tsx`. Mock `@/lib/api`, `next/navigation`, and the clinical record storage helpers. Add these tests:
 
-- [ ] **Step 2: Add slash-command detection in textarea onChange**
+```tsx
+const mockSendMessage = vi.fn();
+const mockPush = vi.fn();
+const mockGetActiveRecord = vi.fn();
+const mockSaveClinicalRecord = vi.fn();
+const mockCloseRecord = vi.fn();
 
-In the existing textarea onChange handler, add: if `value.trimStart().startsWith("/")`, extract the query after `/` and set `slashMenuOpen = true`, `slashQuery = query`. Close the menu on space-after-word, Esc, or backspace past `/`.
+vi.mock("@/lib/api", () => ({ sendMessage: mockSendMessage }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush }) }));
+vi.mock("@/lib/clinical-record/storage", () => ({
+  getActiveRecord: mockGetActiveRecord,
+  saveClinicalRecord: mockSaveClinicalRecord,
+  closeRecord: mockCloseRecord,
+}));
 
-- [ ] **Step 3: Handle command selection (state machine)**
+function makeNewRecord(overrides: Partial<ClinicalRecordData> = {}): ClinicalRecordData {
+  return {
+    id: "new-record",
+    schemaId: "co-dinh",
+    data: { dental_chart: { 16: { condition: "decay" } } },
+    serializedText: "",
+    createdAt: "2026-10-06T00:00:00.000Z",
+    updatedAt: "2026-10-06T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
-When `SlashCommandMenu.onSelect` fires:
-- `form-wizard`: if active record exists, show confirm dialog ("Bệnh án hiện tại sẽ được lưu vào lịch sử. Bạn muốn tạo bệnh án mới?"). On confirm, call `closeRecord(activeRecord.id, null)`, then open wizard. If no active record, open wizard directly.
-- `send-message`: if `requiresClinicalRecord && !activeClinicalRecord`, show toast "Vui lòng tạo bệnh án trước". Otherwise, send `message: "Yêu cầu: [label]"` with `command` and `clinical_context`.
-- `action` (ket-thuc): send summary request, extract last assistant message as summary, call `closeRecord`, navigate to `/history`.
+const oldRecord = makeNewRecord({ id: "old-record" });
+const activeRecord = makeNewRecord({ id: "active-record" });
 
-- [ ] **Step 4: Attach clinical_context to every outgoing request**
+vi.mock("@/components/clinical-record/ClinicalRecordWizard", () => ({
+  ClinicalRecordWizard: ({ onSubmit }: { onSubmit: (record: ClinicalRecordData) => void }) => (
+    <button onClick={() => onSubmit(makeNewRecord({ schemaId: "thao-lap" }))}>Mock wizard submit</button>
+  ),
+}));
 
-In the existing `sendMessage` function, add:
+function selectSlashCommand(id: string) {
+  const command = commandRegistry.getById(id)!;
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: `/${id}` } });
+  fireEvent.click(screen.getByText(command.label));
+}
+
+function sendNormalMessage(message: string) {
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: message } });
+  fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+}
+
+it("does not call handleSend when Enter selects an open slash-command menu", () => {
+  render(<ChatInterface />);
+  const textarea = screen.getByRole("textbox");
+  fireEvent.change(textarea, { target: { value: "/chan" } });
+  fireEvent.keyDown(textarea, { key: "Enter" });
+  expect(mockSendMessage).not.toHaveBeenCalled();
+  expect(screen.getByText("Phân tích chẩn đoán")).toBeInTheDocument();
+});
+
+it("shows record-required notice and does not call API when /chan-doan has no record", () => {
+  render(<ChatInterface />);
+  selectSlashCommand("chan-doan");
+  expect(screen.getByText("Vui lòng tạo bệnh án trước")).toBeInTheDocument();
+  expect(mockSendMessage).not.toHaveBeenCalled();
+});
+
+it("keeps old active record if replacement wizard is cancelled", () => {
+  mockGetActiveRecord.mockReturnValue(oldRecord);
+  render(<ChatInterface />);
+  selectSlashCommand("benh-an-thao-lap");
+  fireEvent.click(screen.getByText(/tiếp tục/i));
+  fireEvent.click(screen.getByRole("button", { name: "Hủy" }));
+  expect(mockCloseRecord).not.toHaveBeenCalled();
+  expect(screen.getByText(/BA Cố Định/)).toBeInTheDocument();
+});
+
+it("closes old record only after replacement wizard submits successfully", () => {
+  mockGetActiveRecord.mockReturnValue(oldRecord);
+  render(<ChatInterface />);
+  selectSlashCommand("benh-an-thao-lap");
+  fireEvent.click(screen.getByText(/tiếp tục/i));
+  fireEvent.click(screen.getByRole("button", { name: "Mock wizard submit" }));
+  expect(mockCloseRecord).toHaveBeenCalledWith(oldRecord.id, null);
+  expect(mockSaveClinicalRecord).toHaveBeenCalledWith(expect.objectContaining({ schemaId: "thao-lap" }));
+});
+
+it("adds clinical_context and command to analysis request", async () => {
+  mockGetActiveRecord.mockReturnValue(activeRecord);
+  render(<ChatInterface />);
+  selectSlashCommand("chan-doan");
+  await waitFor(() => expect(mockSendMessage).toHaveBeenCalledWith(
+    "Yêu cầu: Phân tích chẩn đoán",
+    expect.any(String),
+    expect.anything(),
+    expect.anything(),
+    "chan-doan",
+    expect.stringContaining("Răng:")
+  ));
+});
+
+it("writes sessionId immutably to an active record after first response", async () => {
+  mockGetActiveRecord.mockReturnValue(activeRecord);
+  mockSendMessage.mockResolvedValue({ answer: "OK", session_id: "new-session" });
+  render(<ChatInterface />);
+  sendNormalMessage("Xin chào");
+  await waitFor(() => expect(mockSaveClinicalRecord).toHaveBeenCalledWith(
+    expect.objectContaining({ id: activeRecord.id, sessionId: "new-session" })
+  ));
+  expect(activeRecord.sessionId).toBeUndefined();
+});
+
+it("sends /ket-thuc with its exact request, clinical context, and 15-second timeout", async () => {
+  mockGetActiveRecord.mockReturnValue(activeRecord);
+  mockSendMessage.mockResolvedValue({ answer: "Tóm tắt ca", session_id: "s1" });
+  render(<ChatInterface />);
+  selectSlashCommand("ket-thuc");
+  await waitFor(() => expect(mockSendMessage).toHaveBeenCalledWith(
+    "Yêu cầu: Tóm tắt và lưu case",
+    expect.any(String),
+    expect.anything(),
+    expect.anything(),
+    "ket-thuc",
+    expect.any(String),
+    { timeoutMs: 15_000 },
+  ));
+  expect(mockCloseRecord).toHaveBeenCalledWith(activeRecord.id, "Tóm tắt ca");
+  expect(mockPush).toHaveBeenCalledWith("/history");
+});
+
+it("does not close or navigate when /ket-thuc times out", async () => {
+  mockGetActiveRecord.mockReturnValue(activeRecord);
+  mockSendMessage.mockRejectedValueOnce(new DOMException("timeout", "AbortError"));
+  render(<ChatInterface />);
+  selectSlashCommand("ket-thuc");
+  await waitFor(() => expect(screen.getByText(/không thể tóm tắt/i)).toBeInTheDocument());
+  expect(mockCloseRecord).not.toHaveBeenCalled();
+  expect(mockPush).not.toHaveBeenCalled();
+});
+
+it("does not close or navigate when /ket-thuc has no assistant summary", async () => {
+  mockGetActiveRecord.mockReturnValue(activeRecord);
+  mockSendMessage.mockResolvedValue({ answer: "", session_id: "s1" });
+  render(<ChatInterface />);
+  selectSlashCommand("ket-thuc");
+  await waitFor(() => expect(screen.getByText("Không nhận được tóm tắt")).toBeInTheDocument());
+  expect(mockCloseRecord).not.toHaveBeenCalled();
+  expect(mockPush).not.toHaveBeenCalled();
+});
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd frontend && npx vitest run src/components/chat/ChatInterface.test.tsx`
+Expected: FAIL because the new state machine and request metadata do not exist.
+
+- [ ] **Step 3: Add local state and no-global-toast notice**
+
+Add state for `slashMenuOpen`, `slashQuery`, `activeClinicalRecord`, `wizardOpen`, `wizardSchemaId`, and `pendingReplacementRecordId`. Initialize the record in a mount effect with `setActiveClinicalRecord(getActiveRecord() ?? null)`.
+
+There is no shared toast system in the repository. Reuse the component-scoped `DocumentUploader` pattern: store `notice: { type: "error"; message: string } | null`, render it fixed at `bottom-4 right-4 z-50`, and clear it after 4 seconds. Use this for record-required and `/ket-thuc` errors.
+
+- [ ] **Step 4: Implement menu/textarea keyboard coordination**
+
+In textarea `onChange`, open only when `trimStart()` starts with `/`; close when the command fragment gains a space, the value no longer starts with `/`, or user presses Escape.
+
+In textarea `onKeyDown`, before the normal Enter-to-send path:
+
 ```ts
-if (activeClinicalRecord) {
-  const schema = getSchema(activeClinicalRecord.schemaId);
-  requestBody.clinical_context = buildClinicalSummary(schema, activeClinicalRecord.data);
+if (slashMenuOpen && event.key === "Enter" && !event.nativeEvent.isComposing) {
+  event.preventDefault();
+  return; // SlashCommandMenu owns Enter selection via its document listener.
 }
 ```
 
-- [ ] **Step 5: Assign sessionId lazily on first response**
+This prevents `/chan-doan` from being sent as free text while the menu is open.
 
-After receiving a chat response with `session_id`, if `activeClinicalRecord` exists and has no `sessionId`:
+- [ ] **Step 5: Implement wizard, badge, and replacement handlers**
+
+Define every handler referenced by rendering:
+
 ```ts
-activeClinicalRecord.sessionId = response.session_id;
-saveClinicalRecord(activeClinicalRecord);
+function openWizard(schemaId: "co-dinh" | "thao-lap", replacementId: string | null = null) {
+  setPendingReplacementRecordId(replacementId);
+  setWizardSchemaId(schemaId);
+  setWizardOpen(true);
+  setSlashMenuOpen(false);
+  setInput("");
+}
+
+function handleBadgeEdit() {
+  if (!activeClinicalRecord || activeClinicalRecord.closedAt) return;
+  setPendingReplacementRecordId(null);
+  setWizardSchemaId(activeClinicalRecord.schemaId);
+  setWizardOpen(true);
+}
+
+function handleWizardCancel() {
+  setWizardOpen(false);
+  setWizardSchemaId(null);
+  setPendingReplacementRecordId(null);
+}
+
+function handleWizardSubmit(record: ClinicalRecordData) {
+  if (pendingReplacementRecordId) closeRecord(pendingReplacementRecordId, null);
+  saveClinicalRecord(record);
+  setActiveClinicalRecord(record);
+  setWizardOpen(false);
+  setWizardSchemaId(null);
+  setPendingReplacementRecordId(null);
+}
 ```
 
-- [ ] **Step 6: Render new child components**
+For `form-wizard` selection with active record, show the spec dialog and call `openWizard(schemaId, activeClinicalRecord.id)` only after confirmation. Do **not** call `closeRecord` until `handleWizardSubmit`.
 
-```tsx
-{slashMenuOpen && (
-  <SlashCommandMenu query={slashQuery} onSelect={handleCommandSelect} onClose={() => setSlashMenuOpen(false)} />
-)}
-{wizardOpen && wizardSchemaId && (
-  <ClinicalRecordWizard schemaId={wizardSchemaId} onSubmit={handleWizardSubmit} onCancel={handleWizardCancel} />
-)}
-{activeClinicalRecord && !wizardOpen && (
-  <ClinicalRecordBadge record={activeClinicalRecord} onEdit={handleBadgeEdit} />
-)}
+- [ ] **Step 6: Implement request construction, session update, and `/ket-thuc`**
+
+Create one helper used by normal sends and commands:
+
+```ts
+function getClinicalContext(record: ClinicalRecordData | null): string | undefined {
+  return record ? buildClinicalSummary(getSchema(record.schemaId), record.data) : undefined;
+}
 ```
 
-- [ ] **Step 7: Verify compilation and manual test**
+Pass `command` only for slash-command requests and `getClinicalContext(activeClinicalRecord)` for every outgoing request with a record.
+
+After response, update state immutably:
+
+```ts
+if (activeClinicalRecord && !activeClinicalRecord.sessionId && reply.session_id) {
+  const updated = { ...activeClinicalRecord, sessionId: reply.session_id, updatedAt: new Date().toISOString() };
+  saveClinicalRecord(updated);
+  setActiveClinicalRecord(updated);
+}
+```
+
+For `/ket-thuc`, send exactly `"Yêu cầu: Tóm tắt và lưu case"` with command `"ket-thuc"`, clinical context, and a **15_000 ms** timeout. Extend `sendMessage` in `api.ts` with this final optional argument (normal messages omit it):
+
+```ts
+options?: { timeoutMs?: number },
+```
+
+When `options?.timeoutMs` is set, create an `AbortController`, call `setTimeout(() => controller.abort(), options.timeoutMs)`, pass `controller.signal` to `fetch`, and call `clearTimeout(timeoutId)` in `finally`. In `handleKetThuc`, call:
+
+```ts
+const reply = await sendMessage(
+  "Yêu cầu: Tóm tắt và lưu case",
+  userId,
+  sessionId,
+  mode,
+  "ket-thuc",
+  getClinicalContext(activeClinicalRecord),
+  { timeoutMs: 15_000 },
+);
+```
+
+On abort/network failure: render notice `"Không thể tóm tắt bệnh án. Vui lòng thử lại."`, do not close/navigate. If `reply.answer.trim()` is empty: render `"Không nhận được tóm tắt"`, do not close/navigate. On success, construct `const closedRecord = { ...activeClinicalRecord, summary: reply.answer, closedAt: new Date().toISOString() }`, call `closeRecord(activeClinicalRecord.id, reply.answer)`, set `activeClinicalRecord` to `closedRecord`, then `router.push("/history")`.
+
+- [ ] **Step 7: Render children and run integration tests**
+
+Render `SlashCommandMenu`, `ClinicalRecordWizard`, and `ClinicalRecordBadge` with the handlers from Step 5. For edit, pass `initialData={activeClinicalRecord?.data}` and an existing record id so drafts use the edit key.
+
+Run: `cd frontend && npx vitest run src/components/chat/ChatInterface.test.tsx`
+Expected: ALL PASS.
+
+- [ ] **Step 8: Verify compilation and commit**
 
 Run: `cd frontend && npx tsc --noEmit`
-Then start dev server and manually test the slash-command flow.
-
-- [ ] **Step 8: Commit**
+Expected: No errors.
 
 ```bash
-git add frontend/src/components/chat/ChatInterface.tsx
-git commit -m "feat(chat): integrate slash-commands, wizard, badge, and clinical_context into ChatInterface"
+git add frontend/src/components/chat/ChatInterface.tsx frontend/src/components/chat/ChatInterface.test.tsx frontend/src/lib/api.ts
+git commit -m "feat(chat): integrate slash commands, records, and tested case completion flow"
 ```
 
 ---
@@ -2522,7 +2859,9 @@ Expected: No errors.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A
+git add frontend/src/app/page.tsx frontend/src/app/history/page.tsx
+git rm -r frontend/src/app/case frontend/src/components/case
+git rm frontend/src/components/home/ScenarioCard.tsx frontend/src/lib/case-schemas.ts frontend/src/lib/case-storage.ts
 git commit -m "feat(routes): simplify homepage, update history page, delete old case study files"
 ```
 

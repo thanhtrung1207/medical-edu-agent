@@ -445,13 +445,13 @@ export interface ClinicalRecordData {
   createdAt: string;       // ISO date
   updatedAt: string;
   sessionId?: string;      // linked chat session
-  summary?: string;        // AI-generated summary from /ket-thuc, absent until case is closed
+  summary?: string | null; // AI-generated summary; null when a replacement closes without one
   closedAt?: string;       // ISO date, set by /ket-thuc on success
 }
 ```
 
 Functions: `saveClinicalRecord()`, `getClinicalRecord(id)`, `listClinicalRecords()`,
-`deleteClinicalRecord(id)`, `getActiveRecord()`, `closeRecord(id, summary)`.
+`deleteClinicalRecord(id)`, `getActiveRecord()`, `closeRecord(id, summary: string | null)`.
 
 **Active record resolution:** `getActiveRecord()` returns the most recent record where
 `closedAt` is absent — no `sessionId` parameter needed. A record is created before the
@@ -463,7 +463,8 @@ response that returns a `session_id`, the frontend writes it back to the active 
 **Cross-session inheritance:** If the user closes the browser and returns later, the
 unclosed record is still active — `getActiveRecord()` will return it. This is intentional:
 students may work on a case across multiple sessions. To start fresh without the old
-record, they use `/benh-an-*` (which closes the old record) or `/ket-thuc`.
+record, they use `/benh-an-*` and submit the replacement record (which then closes the old
+record) or `/ket-thuc`.
 
 `closeRecord(id, summary)` sets `summary` and `closedAt` on the record. Called by
 `/ket-thuc` after successfully receiving an AI summary. Also called without summary
@@ -518,7 +519,7 @@ prompt, outside the 6-message history window, so it persists for the entire sess
 | Has record | Types `/chan-doan` etc. | Send `message: "Yêu cầu: [label]"` + `clinical_context` + `command` |
 | Has record | Free-form question | Send `message: "..."` + `clinical_context` (no `command`) |
 | Has record | Edits via badge "Sửa" | Reopen wizard → on submit, update localStorage, next request carries new `clinical_context` |
-| Has record | Types `/benh-an-*` | Confirm dialog: "Bệnh án hiện tại sẽ được lưu vào lịch sử. Bạn muốn tạo bệnh án mới?" On confirm, close current record (set `closedAt` without summary), open wizard for the new schema. On dismiss, do nothing. |
+| Has record | Types `/benh-an-*` | Confirm dialog: "Bệnh án hiện tại sẽ được lưu vào lịch sử khi bạn gửi bệnh án mới. Bạn muốn tiếp tục?" On confirm, open the new wizard but keep the current record active. Only after the new wizard submits successfully: close the old record (set `closedAt` without summary), save and activate the new record. On cancel, leave the old record unchanged. |
 
 **Draft key format:** `unident_wizard_draft_{schemaId}_{recordId}` when editing an existing
 record (via badge "Sửa"), `unident_wizard_draft_{schemaId}_new` when creating a new record.
@@ -756,7 +757,7 @@ app/api/models.py (backend)
 memory/context_builder.py (backend)
   — Pass clinical_context through build_context() return dict
 
-app/services/chat_mode.py, app/services/react_runner.py (backend)
+agents/workflow/chat_mode.py, agents/workflow/react_runner.py (backend)
   — Read clinical_context from context dict, inject [BỐI CẢNH LÂM SÀNG] block in prompt
 
 agents/workflow/nodes/confirm_node.py, think_node.py, answer_node.py (backend)
@@ -925,8 +926,9 @@ The backend Pydantic model adds validation for the two new fields:
     the color.
   - ClinicalRecordBadge expand/collapse. Closed record shows "Đã kết thúc", hides "Sửa".
   - Wizard cancel confirmation dialog when data exists.
-  - State machine: `/benh-an-*` with existing record shows replacement confirm dialog
-    (old record gets closedAt, new wizard opens).
+  - State machine: `/benh-an-*` with an existing record shows replacement confirmation;
+    cancellation keeps the old record active, and a successful new-wizard submit closes the
+    old record before saving and activating the replacement.
 - **Integration tests**:
   - Full wizard flow (fill all steps → submit → verify localStorage saved, no chat message
     sent).
