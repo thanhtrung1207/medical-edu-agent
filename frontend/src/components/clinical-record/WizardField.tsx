@@ -54,13 +54,26 @@ function isOtherSelected(value: unknown, options: FieldDef["options"]): boolean 
   const strVal = typeof value === "object" && value !== null && "value" in value
     ? asString((value as SelectWithTextValue).value)
     : asString(value);
-  return strVal === lastOption.value || strVal === "Khác";
+  return strVal === lastOption.value;
 }
 
 function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProps) {
   const labelId = `label-${field.id}`;
+  const errorId = `error-${field.id}`;
 
-  const label = (
+  const isGroupType = (
+    field.type === "radio" ||
+    field.type === "multi-checkbox" ||
+    field.type === "radio-with-other" ||
+    field.type === "dental-chart"
+  );
+
+  const label = isGroupType ? (
+    <span id={labelId} className="text-xs font-semibold text-slate-700 mb-1 block">
+      {field.label}
+      {field.required && <span className="text-red-500 ml-0.5">*</span>}
+    </span>
+  ) : (
     <label id={labelId} htmlFor={field.id} className="text-xs font-semibold text-slate-700 mb-1 block">
       {field.label}
       {field.required && <span className="text-red-500 ml-0.5">*</span>}
@@ -68,7 +81,7 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
   );
 
   const errorEl = error ? (
-    <p className="text-red-500 text-xs mt-1" role="alert">{error}</p>
+    <p id={errorId} className="text-red-500 text-xs mt-1" role="alert">{error}</p>
   ) : null;
 
   if (field.type === "text") {
@@ -82,6 +95,9 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
           placeholder={field.placeholder}
           onChange={(e) => onChange(field.id, e.target.value)}
           className={inputClass}
+          required={field.required}
+          aria-invalid={error ? "true" : undefined}
+          aria-describedby={error ? errorId : undefined}
         />
         {errorEl}
       </div>
@@ -98,6 +114,9 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
           placeholder={field.placeholder}
           onChange={(e) => onChange(field.id, e.target.value)}
           className={`${inputClass} min-h-[50px] resize-vertical`}
+          required={field.required}
+          aria-invalid={error ? "true" : undefined}
+          aria-describedby={error ? errorId : undefined}
         />
         <p className="text-slate-400 text-[10px] mt-0.5">{TEXTAREA_HINT}</p>
         {errorEl}
@@ -114,6 +133,9 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
           value={asString(value)}
           onChange={(e) => onChange(field.id, e.target.value)}
           className={inputClass}
+          required={field.required}
+          aria-invalid={error ? "true" : undefined}
+          aria-describedby={error ? errorId : undefined}
         >
           <option value="">-- Chọn --</option>
           {field.options?.map((opt) => (
@@ -129,7 +151,7 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
 
   if (field.type === "radio") {
     return (
-      <div>
+      <div role="group" aria-labelledby={labelId}>
         {label}
         <div className="flex flex-wrap gap-2 mt-1">
           {field.options?.map((opt) => (
@@ -154,7 +176,7 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
   if (field.type === "multi-checkbox") {
     const checked = asArray(value);
     return (
-      <div>
+      <div role="group" aria-labelledby={labelId}>
         {label}
         <div className="flex flex-wrap gap-2 mt-1">
           {field.options?.map((opt) => (
@@ -182,7 +204,7 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
 
   if (field.type === "dental-chart") {
     return (
-      <div>
+      <div role="group" aria-labelledby={labelId}>
         {label}
         <DentalChart
           value={asDentalChart(value)}
@@ -205,7 +227,7 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
         : "";
 
     return (
-      <div>
+      <div role="group" aria-labelledby={labelId}>
         {label}
         <div className="flex flex-wrap gap-2 mt-1">
           {field.options?.map((opt) => (
@@ -215,7 +237,7 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
                 name={field.id}
                 value={opt.value}
                 checked={selectedValue === opt.value}
-                onChange={() => onChange(field.id, opt.value)}
+                onChange={() => onChange(field.id, { value: opt.value, text: "" })}
                 className="accent-primary"
               />
               {opt.label}
@@ -261,6 +283,7 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
             type="text"
             value={parsed.text}
             placeholder={field.pairedTextLabel ?? "Ghi chú..."}
+            aria-label={field.pairedTextLabel ?? "Ghi chú..."}
             onChange={(e) => onChange(field.id, { value: parsed.value, text: e.target.value })}
             className={`${inputClass} flex-1`}
           />

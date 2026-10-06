@@ -257,6 +257,216 @@ describe("WizardField – required asterisk", () => {
   });
 });
 
+// ── I-1: Accessible group role ────────────────────────────────────────────────
+
+describe("WizardField – accessible group role (I-1)", () => {
+  it("radio: outer div has role=group and aria-labelledby pointing to label id", () => {
+    const field = mkField({
+      type: "radio",
+      options: [{ value: "A", label: "Alpha" }],
+    });
+    const { container } = render(<WizardField field={field} value="" onChange={vi.fn()} />);
+    const group = container.querySelector('[role="group"]');
+    expect(group).toBeTruthy();
+    const labelId = group!.getAttribute("aria-labelledby");
+    expect(labelId).toBeTruthy();
+    expect(container.querySelector(`#${labelId}`)).toBeTruthy();
+  });
+
+  it("multi-checkbox: outer div has role=group and aria-labelledby", () => {
+    const field = mkField({
+      type: "multi-checkbox",
+      options: [{ value: "A", label: "Alpha" }],
+    });
+    const { container } = render(<WizardField field={field} value={[]} onChange={vi.fn()} />);
+    expect(container.querySelector('[role="group"]')).toBeTruthy();
+  });
+
+  it("radio-with-other: outer div has role=group and aria-labelledby", () => {
+    const field = mkField({
+      type: "radio-with-other",
+      options: [{ value: "Khác", label: "Khác" }],
+    });
+    const { container } = render(<WizardField field={field} value="" onChange={vi.fn()} />);
+    expect(container.querySelector('[role="group"]')).toBeTruthy();
+  });
+
+  it("dental-chart: outer div has role=group and aria-labelledby", () => {
+    const field = mkField({ type: "dental-chart" });
+    const { container } = render(<WizardField field={field} value={{}} onChange={vi.fn()} />);
+    expect(container.querySelector('[role="group"]')).toBeTruthy();
+  });
+
+  it("text: outer label still has htmlFor pointing to the input id", () => {
+    const field = mkField({ type: "text" });
+    const { container } = render(<WizardField field={field} value="" onChange={vi.fn()} />);
+    const label = container.querySelector("label");
+    expect(label?.getAttribute("for")).toBe(field.id);
+  });
+});
+
+// ── I-2: radio-with-other radio click emits {value, text:""} ─────────────────
+
+describe("WizardField – radio-with-other radio click type (I-2)", () => {
+  it("emits {value, text:''} not a bare string when a radio is clicked", () => {
+    const onChange = vi.fn();
+    const field = mkField({
+      type: "radio-with-other",
+      options: [
+        { value: "Tốt", label: "Tốt" },
+        { value: "Không tốt", label: "Không tốt" },
+        { value: "Khác", label: "Khác" },
+      ],
+    });
+    render(<WizardField field={field} value="" onChange={onChange} />);
+    fireEvent.click(screen.getByLabelText("Tốt"));
+    expect(onChange).toHaveBeenCalledWith("f1", { value: "Tốt", text: "" });
+  });
+
+  it("emits {value, text:''} for the last (other) option too", () => {
+    const onChange = vi.fn();
+    const field = mkField({
+      type: "radio-with-other",
+      options: [
+        { value: "Tốt", label: "Tốt" },
+        { value: "Khác", label: "Khác" },
+      ],
+    });
+    render(<WizardField field={field} value="" onChange={onChange} />);
+    fireEvent.click(screen.getByLabelText("Khác"));
+    expect(onChange).toHaveBeenCalledWith("f1", { value: "Khác", text: "" });
+  });
+});
+
+// ── I-3: No hardcoded "Khác" fallback ─────────────────────────────────────────
+
+describe("WizardField – isOtherSelected uses lastOption.value only (I-3)", () => {
+  it("does NOT show free-text when value='Khác' but last option is a different value", () => {
+    // last option is "Last", not "Khác"
+    const field = mkField({
+      type: "radio-with-other",
+      options: [
+        { value: "Khác", label: "Khác" },
+        { value: "Last", label: "Last" },
+      ],
+    });
+    render(<WizardField field={field} value="Khác" onChange={vi.fn()} />);
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+});
+
+// ── I-4: select-with-text paired text input aria-label ───────────────────────
+
+describe("WizardField – select-with-text aria-label (I-4)", () => {
+  it("paired text input has aria-label matching pairedTextLabel", () => {
+    const field = mkField({
+      type: "select-with-text",
+      pairedTextLabel: "Biến thể",
+      options: [{ value: "A", label: "A" }],
+    });
+    render(<WizardField field={field} value={{ value: "A", text: "" }} onChange={vi.fn()} />);
+    const textInput = screen.getByRole("textbox");
+    expect(textInput.getAttribute("aria-label")).toBe("Biến thể");
+  });
+
+  it("paired text input defaults aria-label to 'Ghi chú...' when pairedTextLabel absent", () => {
+    const field = mkField({
+      type: "select-with-text",
+      options: [{ value: "A", label: "A" }],
+    });
+    render(<WizardField field={field} value={{ value: "A", text: "" }} onChange={vi.fn()} />);
+    const textInput = screen.getByRole("textbox");
+    expect(textInput.getAttribute("aria-label")).toBe("Ghi chú...");
+  });
+});
+
+// ── I-5: required and aria-invalid / aria-describedby ────────────────────────
+
+describe("WizardField – required and aria-invalid (I-5)", () => {
+  it("text input has required attribute when field.required is true", () => {
+    render(<WizardField field={mkField({ type: "text", required: true })} value="" onChange={vi.fn()} />);
+    expect((screen.getByRole("textbox") as HTMLInputElement).required).toBe(true);
+  });
+
+  it("textarea has required attribute when field.required is true", () => {
+    render(<WizardField field={mkField({ type: "textarea", required: true })} value="" onChange={vi.fn()} />);
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).required).toBe(true);
+  });
+
+  it("select has required attribute when field.required is true", () => {
+    render(
+      <WizardField field={mkField({ type: "select", required: true, options: [] })} value="" onChange={vi.fn()} />,
+    );
+    expect((screen.getByRole("combobox") as HTMLSelectElement).required).toBe(true);
+  });
+
+  it("text input has aria-invalid='true' and aria-describedby pointing to error element when error given", () => {
+    render(
+      <WizardField field={mkField({ type: "text" })} value="" onChange={vi.fn()} error="Required" />,
+    );
+    const input = screen.getByRole("textbox");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    const describedById = input.getAttribute("aria-describedby");
+    expect(describedById).toBeTruthy();
+    expect(document.getElementById(describedById!)).toBeTruthy();
+    expect(document.getElementById(describedById!)!.textContent).toBe("Required");
+  });
+
+  it("text input has no aria-invalid when no error", () => {
+    render(<WizardField field={mkField({ type: "text" })} value="" onChange={vi.fn()} />);
+    const input = screen.getByRole("textbox");
+    expect(input.getAttribute("aria-invalid")).toBeNull();
+  });
+});
+
+// ── I-6: WizardStepRenderer per-type value defaults ──────────────────────────
+
+describe("WizardStepRenderer – per-type value defaults (I-6)", () => {
+  it("passes [] as default for multi-checkbox when data has no value for the field", () => {
+    const mcStep = {
+      id: "s",
+      label: "S",
+      shortLabel: "S",
+      fields: [
+        {
+          id: "mc",
+          label: "MC",
+          type: "multi-checkbox" as const,
+          options: [{ value: "A", label: "A" }],
+        },
+      ],
+    };
+    render(<WizardStepRenderer step={mcStep} data={{}} onChange={vi.fn()} />);
+    // Checkboxes render correctly (not crashing from calling .includes on "")
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(1);
+    expect((checkboxes[0] as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("passes {} as default for dental-chart when data has no value for the field", () => {
+    const dcStep = {
+      id: "s",
+      label: "S",
+      shortLabel: "S",
+      fields: [{ id: "chart", label: "Chart", type: "dental-chart" as const }],
+    };
+    render(<WizardStepRenderer step={dcStep} data={{}} onChange={vi.fn()} />);
+    expect(screen.getByRole("region", { name: "Sơ đồ răng" })).toBeTruthy();
+  });
+
+  it("passes '' as default for text field when data has no value", () => {
+    const textStep = {
+      id: "s",
+      label: "S",
+      shortLabel: "S",
+      fields: [{ id: "name", label: "Name", type: "text" as const }],
+    };
+    render(<WizardStepRenderer step={textStep} data={{}} onChange={vi.fn()} />);
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    expect(input.value).toBe("");
+  });
+});
+
 // ── WizardStepRenderer ────────────────────────────────────────────────────────
 
 describe("WizardStepRenderer", () => {

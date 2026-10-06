@@ -81,7 +81,14 @@ export function WizardStepRenderer({
           >
             <WizardField
               field={field}
-              value={data[field.id] ?? ""}
+              value={
+                data[field.id] ??
+                (field.type === "multi-checkbox"
+                  ? []
+                  : field.type === "dental-chart"
+                    ? {}
+                    : "")
+              }
               onChange={onChange}
               error={errors[field.id]}
             />
