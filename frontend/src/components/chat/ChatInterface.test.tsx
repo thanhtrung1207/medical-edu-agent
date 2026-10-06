@@ -187,7 +187,7 @@ describe("ChatInterface mode selection", () => {
         "agent",
       );
     });
-    expect(screen.getByText(/phân tích sâu/i)).toBeDefined();
+    expect(screen.getByText("Trả lời ở chế độ agent.")).toBeDefined();
   });
 });
 
