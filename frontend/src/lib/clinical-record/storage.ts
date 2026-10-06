@@ -28,9 +28,17 @@ function isClinicalRecordData(value: unknown): value is ClinicalRecordData {
   );
 }
 
+function cloneRecord(record: ClinicalRecordData): ClinicalRecordData {
+  return structuredClone(record);
+}
+
+function cloneRecords(records: ClinicalRecordData[]): ClinicalRecordData[] {
+  return records.map(cloneRecord);
+}
+
 function readAll(): ClinicalRecordData[] {
   if (fallbackRecords) {
-    const records = fallbackRecords;
+    const records = cloneRecords(fallbackRecords);
     writeAll(records);
     return records;
   }
@@ -54,7 +62,7 @@ function readAll(): ClinicalRecordData[] {
 }
 
 function writeAll(records: ClinicalRecordData[]): void {
-  fallbackRecords = records;
+  fallbackRecords = cloneRecords(records);
 
   try {
     const serializedRecords = JSON.stringify(records);
@@ -70,11 +78,12 @@ function writeAll(records: ClinicalRecordData[]): void {
 
 export function saveClinicalRecord(record: ClinicalRecordData): void {
   const records = readAll();
+  const recordCopy = cloneRecord(record);
   const idx = records.findIndex((r) => r.id === record.id);
   if (idx >= 0) {
-    records[idx] = record;
+    records[idx] = recordCopy;
   } else {
-    records.push(record);
+    records.push(recordCopy);
   }
   writeAll(records);
 }

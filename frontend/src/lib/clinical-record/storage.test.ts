@@ -213,6 +213,43 @@ describe("clinical-record storage", () => {
     expect(listClinicalRecords()).toEqual([]);
   });
 
+  it("does not retain caller mutations after saving to fallback storage", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Storage unavailable");
+    });
+    const record = makeRecord({
+      data: { toothChart: { teeth: [11] } },
+    });
+
+    saveClinicalRecord(record);
+    (record.data.toothChart as { teeth: number[] }).teeth.push(12);
+
+    vi.restoreAllMocks();
+    expect(listClinicalRecords()[0]?.data).toEqual({
+      toothChart: { teeth: [11] },
+    });
+  });
+
+  it("does not persist mutations to records read from fallback storage", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Storage unavailable");
+    });
+    const record = makeRecord({
+      data: { toothChart: { teeth: [11] } },
+    });
+
+    saveClinicalRecord(record);
+    const fromGet = getClinicalRecord(record.id);
+    const fromList = listClinicalRecords()[0];
+    (fromGet?.data.toothChart as { teeth: number[] }).teeth.push(12);
+    (fromList?.data.toothChart as { teeth: number[] }).teeth.push(13);
+
+    vi.restoreAllMocks();
+    expect(listClinicalRecords()[0]?.data).toEqual({
+      toothChart: { teeth: [11] },
+    });
+  });
+
   it("deletes old dcs_saved_cases key on first load", () => {
     localStorage.setItem("dcs_saved_cases", "old data");
     listClinicalRecords();
