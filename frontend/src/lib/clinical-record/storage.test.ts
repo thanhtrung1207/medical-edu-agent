@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   saveClinicalRecord,
   getClinicalRecord,
@@ -23,7 +23,12 @@ function makeRecord(overrides: Partial<ClinicalRecordData> = {}): ClinicalRecord
 
 describe("clinical-record storage", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("saves and retrieves a record", () => {
@@ -99,6 +104,78 @@ describe("clinical-record storage", () => {
     const updated = getClinicalRecord(record.id);
     expect(updated?.closedAt).toBeTruthy();
     expect(updated?.summary).toBeNull();
+  });
+
+  it.each([[null], [{}]])(
+    "filters malformed stored entries %j without throwing",
+    (records) => {
+      localStorage.setItem("unident_clinical_records", JSON.stringify(records));
+
+      expect(() => listClinicalRecords()).not.toThrow();
+      expect(listClinicalRecords()).toEqual([]);
+      expect(() => getActiveRecord()).not.toThrow();
+      expect(getActiveRecord()).toBeUndefined();
+    },
+  );
+
+  it("preserves valid records while filtering malformed stored entries", () => {
+    const record = makeRecord();
+    localStorage.setItem(
+      "unident_clinical_records",
+      JSON.stringify([record, null, {}]),
+    );
+
+    expect(listClinicalRecords()).toEqual([record]);
+    expect(getActiveRecord()).toEqual(record);
+  });
+
+  it("does not throw when localStorage.getItem fails", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("Storage unavailable");
+    });
+    const record = makeRecord();
+
+    for (const operation of [
+      () => saveClinicalRecord(record),
+      () => getClinicalRecord(record.id),
+      () => listClinicalRecords(),
+      () => deleteClinicalRecord(record.id),
+      () => getActiveRecord(),
+      () => closeRecord(record.id, null),
+    ]) {
+      expect(operation).not.toThrow();
+    }
+  });
+
+  it("does not throw when localStorage.removeItem fails", () => {
+    localStorage.setItem("dcs_saved_cases", "old data");
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("Storage unavailable");
+    });
+    const record = makeRecord();
+
+    for (const operation of [
+      () => saveClinicalRecord(record),
+      () => getClinicalRecord(record.id),
+      () => listClinicalRecords(),
+      () => deleteClinicalRecord(record.id),
+      () => getActiveRecord(),
+      () => closeRecord(record.id, null),
+    ]) {
+      expect(operation).not.toThrow();
+    }
+  });
+
+  it("does not throw when localStorage.setItem fails", () => {
+    const record = makeRecord();
+    localStorage.setItem("unident_clinical_records", JSON.stringify([record]));
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Storage unavailable");
+    });
+
+    expect(() => saveClinicalRecord(makeRecord())).not.toThrow();
+    expect(() => deleteClinicalRecord(record.id)).not.toThrow();
+    expect(() => closeRecord(record.id, null)).not.toThrow();
   });
 
   it("deletes old dcs_saved_cases key on first load", () => {
