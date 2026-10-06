@@ -173,11 +173,11 @@ describe("validateStep – year 1900–now (nam_sinh)", () => {
 describe("ClinicalRecordWizard – learning banner", () => {
   it("renders exact learning banner text", () => {
     render(<ClinicalRecordWizard schema={coDinhSchema} onSubmit={vi.fn()} onCancel={vi.fn()} />);
-    expect(
-      screen.getByText(
-        "Đây là bệnh án giả định cho mục đích học tập. Không nhập thông tin bệnh nhân thật.",
-      ),
-    ).toBeTruthy();
+    const banner = screen.getByRole("note");
+    expect(banner).toBeTruthy();
+    expect(banner.textContent).toContain(
+      "Đây là bệnh án giả định cho mục đích học tập. Không nhập thông tin bệnh nhân thật.",
+    );
   });
 });
 
@@ -387,6 +387,7 @@ describe("ClinicalRecordWizard – submit", () => {
     const record = onSubmit.mock.calls[0][0];
     expect(record.id).toBe("test-uuid-1234");
     expect(record.schemaId).toBe("co-dinh");
+    expect(typeof record.data).toBe("object");
     expect(typeof record.serializedText).toBe("string");
     expect(record.serializedText.length).toBeGreaterThan(0);
     // ISO timestamps
