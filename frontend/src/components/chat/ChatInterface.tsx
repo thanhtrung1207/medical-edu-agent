@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   RotateCw,
@@ -17,10 +18,21 @@ import {
   notifySessionUpdated,
   setActiveSessionId,
 } from "@/lib/client-identity";
+import { getActiveRecord, saveClinicalRecord, closeRecord } from "@/lib/clinical-record/storage";
+import { buildClinicalSummary } from "@/lib/clinical-record/summarize";
+import { getSchema } from "@/lib/clinical-record/schemas";
+import type { ClinicalRecordData } from "@/lib/clinical-record/types";
+import type { SchemaId } from "@/lib/clinical-record/schemas";
+import { commandRegistry } from "@/lib/slash-commands/registry";
+import type { SlashCommand } from "@/lib/slash-commands/types";
+import "@/lib/slash-commands/commands";
 import { generateId } from "@/lib/utils";
 import { ChatModeToggle } from "./ChatModeToggle";
 import { MessageBubble } from "./MessageBubble";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import { SlashCommandMenu } from "./SlashCommandMenu";
+import { ClinicalRecordBadge } from "./ClinicalRecordBadge";
+import { ClinicalRecordWizard } from "@/components/clinical-record/ClinicalRecordWizard";
 
 const SUGGESTIONS = [
   "Phân loại mức độ gãy vỡ răng theo Ellis?",
@@ -32,6 +44,9 @@ const DEFAULT_HEADER_TITLE = "UniDent";
 
 const FINISH_CASE_MESSAGE =
   "Thầy ơi, em muốn kết thúc case này. Thầy tóm tắt phân tích của em, đánh giá phác đồ điều trị (điểm tốt + điểm cần cải thiện), và đưa ra phương án tham khảo cuối cùng cùng những lưu ý lâm sàng quan trọng giúp em nhé.";
+
+// Budget for the /ket-thuc summary request before aborting.
+const CASE_SUMMARY_TIMEOUT_MS = 60_000;
 
 interface ChatInterfaceProps {
   /** Auto-send on mount (the serialized case text). */
@@ -66,6 +81,9 @@ export function ChatInterface({
   freshSession,
   externalSessionId,
 }: ChatInterfaceProps = {}) {
+  const router = useRouter();
+
+  // ── Core chat state ─────────────────────────────────────────────────────────
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<ChatMode>("chat");
@@ -83,6 +101,44 @@ export function ChatInterface({
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyRetryCount, setHistoryRetryCount] = useState(0);
 
+  // ── Slash command state ──────────────────────────────────────────────────────
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState("");
+
+  // ── Clinical record state ────────────────────────────────────────────────────
+  const [activeClinicalRecord, setActiveClinicalRecord] = useState<ClinicalRecordData | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardSchemaId, setWizardSchemaId] = useState<SchemaId | null>(null);
+  const [pendingReplacementRecordId, setPendingReplacementRecordId] = useState<string | null>(null);
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+
+  // ── /ket-thuc guard (ref for synchronous read before React re-render) ────────
+  const isClosingCaseRef = useRef(false);
+  const [isClosingCase, _setIsClosingCase] = useState(false);
+
+  function setIsClosingCase(val: boolean) {
+    isClosingCaseRef.current = val;
+    _setIsClosingCase(val);
+  }
+
+  // ── Inline notice (record-required, ket-thuc errors) ────────────────────────
+  const [notice, setNotice] = useState<{ type: "error"; message: string } | null>(null);
+
+  // Auto-dismiss notice after 4 seconds.
+  useEffect(() => {
+    if (!notice) return;
+    const id = setTimeout(() => setNotice(null), 4000);
+    return () => clearTimeout(id);
+  }, [notice]);
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  const getClinicalContext = useCallback(
+    (record: ClinicalRecordData | null): string | undefined =>
+      record ? buildClinicalSummary(getSchema(record.schemaId), record.data) : undefined,
+    [],
+  );
+
   const scrollToBottom = () => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
@@ -90,25 +146,27 @@ export function ChatInterface({
     });
   };
 
+  // ── Effects ──────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     scrollToBottom();
   }, [messages, isThinking]);
 
+  // Load (or clear) the active clinical record on mount.
+  useEffect(() => {
+    setActiveClinicalRecord(getActiveRecord() ?? null);
+  }, []);
+
   useEffect(() => {
     const id = getOrCreateUserId();
-    // freshSession (case screen) always starts blank and ignores any
-    // externally opened session; otherwise the external session wins over
-    // the one stored in localStorage.
     const activeSessionId = freshSession
       ? null
       : externalSessionId ?? getActiveSessionId();
 
-    // Persist the externally opened session so it becomes the active one.
     if (externalSessionId) {
       setActiveSessionId(externalSessionId);
     }
 
-    // A session switch must cancel any in-flight request and reset the view.
     conversationGenerationRef.current += 1;
     finishCasePendingRef.current = false;
     storedSessionId.current = activeSessionId;
@@ -170,6 +228,8 @@ export function ChatInterface({
     };
   }, [sessionId, userId, historyRetryCount]);
 
+  // ── Handlers ─────────────────────────────────────────────────────────────────
+
   const handleRetryHistory = () => {
     historyLoaded.current = false;
     setHistoryRetryCount((count) => count + 1);
@@ -179,13 +239,18 @@ export function ChatInterface({
     setHistoryError(null);
   };
 
-  const handleSend = async (text: string) => {
+  const handleSend = async (
+    text: string,
+    commandId?: string,
+    clinicalContextOverride?: string,
+  ) => {
     const trimmed = text.trim();
     if (!trimmed || isThinking || !userId) return;
 
     const requestGeneration = conversationGenerationRef.current;
     const isCurrentConversation = () =>
       requestGeneration === conversationGenerationRef.current;
+
     const userMessage: Message = {
       id: generateId("msg"),
       role: "user",
@@ -196,16 +261,27 @@ export function ChatInterface({
     setInput("");
     setIsThinking(true);
 
+    const clinicalContext =
+      clinicalContextOverride ?? getClinicalContext(activeClinicalRecord);
+
     try {
-      const reply = await sendMessage(
-        trimmed,
-        userId,
-        sessionId ?? undefined,
-        mode,
-      );
+      const reply =
+        commandId !== undefined || clinicalContext !== undefined
+          ? await sendMessage(
+              trimmed,
+              userId,
+              sessionId ?? undefined,
+              mode,
+              commandId,
+              clinicalContext,
+            )
+          : await sendMessage(trimmed, userId, sessionId ?? undefined, mode);
+
       if (!isCurrentConversation()) return;
 
-      if (!reply.content?.trim()) {
+      const replyContent = reply.answer ?? reply.content;
+
+      if (!replyContent?.trim()) {
         finishCasePendingRef.current = false;
         setMessages((current) => [
           ...current,
@@ -225,7 +301,7 @@ export function ChatInterface({
         {
           id: reply.message_id ?? generateId("msg"),
           role: "assistant",
-          content: reply.content,
+          content: replyContent,
           timestamp: new Date(),
           confidence: reply.confidence,
           citations: reply.citations,
@@ -241,14 +317,23 @@ export function ChatInterface({
           setSessionId(reply.session_id);
           onSessionCreated?.(reply.session_id);
         }
-        // Keep the sidebar session list in sync (new session, topic,
-        // message count, ...).
         notifySessionUpdated();
+      }
+
+      // Immutably bind the session ID to the active record on first response.
+      if (activeClinicalRecord && !activeClinicalRecord.sessionId && reply.session_id) {
+        const updated = {
+          ...activeClinicalRecord,
+          sessionId: reply.session_id,
+          updatedAt: new Date().toISOString(),
+        };
+        saveClinicalRecord(updated);
+        setActiveClinicalRecord(updated);
       }
 
       if (finishCasePendingRef.current && onFinishCase) {
         finishCasePendingRef.current = false;
-        onFinishCase(reply.content);
+        onFinishCase(replyContent);
       }
     } catch {
       if (!isCurrentConversation()) return;
@@ -272,6 +357,150 @@ export function ChatInterface({
     }
   };
 
+  // ── Wizard handlers ───────────────────────────────────────────────────────────
+
+  function openWizard(schemaId: SchemaId, replacementId: string | null = null) {
+    setEditingRecordId(null);
+    setPendingReplacementRecordId(replacementId);
+    setWizardSchemaId(schemaId);
+    setWizardOpen(true);
+    setSlashMenuOpen(false);
+    setInput("");
+  }
+
+  function handleBadgeEdit() {
+    if (!activeClinicalRecord || activeClinicalRecord.closedAt) return;
+    setPendingReplacementRecordId(null);
+    setEditingRecordId(activeClinicalRecord.id);
+    setWizardSchemaId(activeClinicalRecord.schemaId);
+    setWizardOpen(true);
+  }
+
+  function handleWizardCancel() {
+    setWizardOpen(false);
+    setWizardSchemaId(null);
+    setPendingReplacementRecordId(null);
+    setEditingRecordId(null);
+  }
+
+  function handleWizardSubmit(submittedRecord: ClinicalRecordData) {
+    const isEditingActiveRecord = editingRecordId === activeClinicalRecord?.id;
+    const recordToSave =
+      isEditingActiveRecord && activeClinicalRecord
+        ? {
+            ...activeClinicalRecord,
+            data: submittedRecord.data,
+            serializedText: submittedRecord.serializedText,
+            updatedAt: new Date().toISOString(),
+          }
+        : submittedRecord;
+
+    if (pendingReplacementRecordId) closeRecord(pendingReplacementRecordId, null);
+    saveClinicalRecord(recordToSave);
+    setActiveClinicalRecord(recordToSave);
+    setWizardOpen(false);
+    setWizardSchemaId(null);
+    setPendingReplacementRecordId(null);
+    setEditingRecordId(null);
+  }
+
+  // ── Slash command handler ─────────────────────────────────────────────────────
+
+  function handleSlashCommand(cmd: SlashCommand) {
+    if (cmd.handler === "form-wizard") {
+      const schemaId = cmd.formSchemaId as SchemaId;
+      setSlashMenuOpen(false);
+      setSlashQuery("");
+      setInput("");
+      if (activeClinicalRecord) {
+        const confirmed = window.confirm(
+          "Bệnh án hiện tại sẽ được lưu vào lịch sử khi bạn gửi bệnh án mới. Bạn muốn tiếp tục?",
+        );
+        if (!confirmed) return;
+        openWizard(schemaId, activeClinicalRecord.id);
+      } else {
+        openWizard(schemaId, null);
+      }
+      return;
+    }
+
+    if (cmd.requiresClinicalRecord && !activeClinicalRecord) {
+      setNotice({ type: "error", message: "Vui lòng tạo bệnh án trước" });
+      return;
+    }
+
+    // Close menu for executable commands.
+    setSlashMenuOpen(false);
+    setSlashQuery("");
+    setInput("");
+
+    if (cmd.handler === "action" && cmd.id === "ket-thuc") {
+      void handleKetThuc();
+      return;
+    }
+
+    if (cmd.handler === "send-message") {
+      const message = `Yêu cầu: ${cmd.label}`;
+      void handleSend(message, cmd.id, getClinicalContext(activeClinicalRecord));
+    }
+  }
+
+  // ── /ket-thuc handler ─────────────────────────────────────────────────────────
+
+  async function handleKetThuc() {
+    if (!activeClinicalRecord || isClosingCaseRef.current) return;
+    setIsClosingCase(true);
+    try {
+      const reply = await sendMessage(
+        "Yêu cầu: Tóm tắt và lưu case",
+        userId!,
+        sessionId ?? undefined,
+        mode,
+        "ket-thuc",
+        getClinicalContext(activeClinicalRecord),
+        { timeoutMs: CASE_SUMMARY_TIMEOUT_MS },
+      );
+
+      const summary = (reply.answer ?? reply.content ?? "").trim();
+      if (!summary) {
+        setNotice({ type: "error", message: "Không nhận được tóm tắt" });
+        return;
+      }
+
+      const resolvedSessionId = activeClinicalRecord.sessionId ?? reply.session_id;
+      const closedRecord: ClinicalRecordData = {
+        ...activeClinicalRecord,
+        ...(resolvedSessionId ? { sessionId: resolvedSessionId } : {}),
+        summary,
+        closedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      saveClinicalRecord(closedRecord);
+      closeRecord(activeClinicalRecord.id, summary);
+      setActiveClinicalRecord(closedRecord);
+
+      if (reply.session_id) {
+        setActiveSessionId(reply.session_id);
+        if (reply.session_id !== sessionId) {
+          setSessionId(reply.session_id);
+          onSessionCreated?.(reply.session_id);
+        }
+        notifySessionUpdated();
+      }
+
+      router.push("/history");
+    } catch {
+      setNotice({
+        type: "error",
+        message: "Không thể tóm tắt bệnh án. Vui lòng thử lại.",
+      });
+    } finally {
+      setIsClosingCase(false);
+    }
+  }
+
+  // ── Legacy finish-case handler (case screen) ──────────────────────────────────
+
   const handleNewConversation = () => {
     conversationGenerationRef.current += 1;
     finishCasePendingRef.current = false;
@@ -283,18 +512,28 @@ export function ChatInterface({
     setMessages([]);
     setIsThinking(false);
     setHistoryError(null);
-    // Let the sidebar session list reflect the new empty state.
     notifySessionUpdated();
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // When the slash menu is open, Enter should be handled by the menu's global
+    // listener — not fire a send.
+    if (
+      slashMenuOpen &&
+      event.key === "Enter" &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault();
+      return;
+    }
+
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void handleSend(input);
     }
   };
 
-  // Auto-grow: recompute height whenever input text changes (typing or clearing).
+  // Auto-grow: recompute height whenever input text changes.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -328,8 +567,34 @@ export function ChatInterface({
     messages.length > 0 &&
     !isThinking;
 
+  // ── Render ────────────────────────────────────────────────────────────────────
+
   return (
     <div className="flex h-full flex-col">
+      {/* Fixed inline notice (record-required, /ket-thuc errors) */}
+      {notice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-4 right-4 z-50 max-w-xs rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-md dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
+        >
+          {notice.message}
+        </div>
+      )}
+
+      {/* Full-screen wizard overlay */}
+      {wizardOpen && wizardSchemaId && (
+        <div className="fixed inset-0 z-40 overflow-auto bg-white dark:bg-slate-900">
+          <ClinicalRecordWizard
+            schema={getSchema(wizardSchemaId)}
+            recordId={editingRecordId ?? undefined}
+            initialData={editingRecordId ? activeClinicalRecord?.data : undefined}
+            onSubmit={handleWizardSubmit}
+            onCancel={handleWizardCancel}
+          />
+        </div>
+      )}
+
       <div
         ref={scrollRef}
         className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-4 py-6 sm:px-6"
@@ -440,6 +705,17 @@ export function ChatInterface({
             </button>
           </div>
         )}
+
+        {/* Active clinical record badge */}
+        {activeClinicalRecord && !activeClinicalRecord.closedAt && (
+          <div className="mx-auto mb-2 max-w-3xl">
+            <ClinicalRecordBadge
+              record={activeClinicalRecord}
+              onEdit={handleBadgeEdit}
+            />
+          </div>
+        )}
+
         <div className="mx-auto max-w-3xl">
           <div className="mb-2 flex items-center justify-between">
             <ChatModeToggle
@@ -448,11 +724,44 @@ export function ChatInterface({
               disabled={isThinking}
             />
           </div>
-          <div className="flex items-end gap-2">
+          <div className="relative flex items-end gap-2">
+            {/* Slash command menu — positioned above the input row */}
+            {slashMenuOpen && (
+              <div className="absolute bottom-full left-0 mb-1 w-72">
+                <SlashCommandMenu
+                  query={slashQuery}
+                  onSelect={handleSlashCommand}
+                  onClose={() => {
+                    setSlashMenuOpen(false);
+                    setSlashQuery("");
+                  }}
+                  disabledCommandIds={
+                    isClosingCase ? new Set(["ket-thuc"]) : undefined
+                  }
+                />
+              </div>
+            )}
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={(event) => {
+                const val = event.target.value;
+                setInput(val);
+                // Derive slash fragment: only open menu when value starts with /,
+                // the fragment has no space, and results are non-empty.
+                const trimmed = val.trimStart();
+                if (trimmed.startsWith("/")) {
+                  const fragment = trimmed.slice(1);
+                  if (!fragment.includes(" ") && commandRegistry.search(fragment).length > 0) {
+                    setSlashMenuOpen(true);
+                    setSlashQuery(fragment);
+                    return;
+                  }
+                }
+                // Close menu for anything else (no match, space in fragment, no slash).
+                setSlashMenuOpen(false);
+                setSlashQuery("");
+              }}
               onKeyDown={handleKeyDown}
               rows={1}
               placeholder="Nhập câu hỏi nha khoa của bạn..."

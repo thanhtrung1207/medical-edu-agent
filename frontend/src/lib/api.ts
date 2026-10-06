@@ -27,6 +27,8 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export interface AssistantReply {
   content: string;
+  /** Text answer returned by the backend; takes precedence over `content` for summary flows. */
+  answer?: string;
   confidence?: number;
   citations: Citation[];
   warnings: string[];
@@ -71,23 +73,37 @@ export async function sendMessage(
   mode?: ChatMode,
   command?: string,
   clinicalContext?: string,
+  options?: { timeoutMs?: number },
 ): Promise<AssistantReply> {
   if (USE_MOCK_API) return buildMockReply(message);
 
-  const res = await apiFetch(`${config.apiBaseUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message,
-      user_id: userId,
-      ...(sessionId ? { session_id: sessionId } : {}),
-      ...(mode ? { mode } : {}),
-      ...(command ? { command } : {}),
-      ...(clinicalContext ? { clinical_context: clinicalContext } : {}),
-    }),
-  });
-  if (!res.ok) throw new Error(`Chat request failed: ${res.status}`);
-  return (await res.json()) as AssistantReply;
+  let controller: AbortController | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  if (options?.timeoutMs) {
+    controller = new AbortController();
+    timeoutId = setTimeout(() => controller!.abort(), options.timeoutMs);
+  }
+
+  try {
+    const res = await apiFetch(`${config.apiBaseUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        user_id: userId,
+        ...(sessionId ? { session_id: sessionId } : {}),
+        ...(mode ? { mode } : {}),
+        ...(command ? { command } : {}),
+        ...(clinicalContext ? { clinical_context: clinicalContext } : {}),
+      }),
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    if (!res.ok) throw new Error(`Chat request failed: ${res.status}`);
+    return (await res.json()) as AssistantReply;
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
 }
 
 export interface ChatHistoryMessage {
