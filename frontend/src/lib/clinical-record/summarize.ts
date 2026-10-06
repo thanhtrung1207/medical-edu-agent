@@ -55,10 +55,11 @@ function buildToothSection(chart: unknown): string {
 
     const note = truncate(status.note, MAX_NOTE_PER_TOOTH);
     const part = note ? `${fdi}(${label} — ${note})` : `${fdi}(${label})`;
+    const separatorLength = parts.length === 0 ? 0 : ", ".length;
 
-    if (total + part.length + 2 > MAX_TOOTH_SECTION) break;
+    if (total + separatorLength + part.length > MAX_TOOTH_SECTION) break;
     parts.push(part);
-    total += part.length + 2;
+    total += separatorLength + part.length;
   }
 
   return parts.length > 0 ? `Răng: ${parts.join(", ")}` : "";

@@ -153,6 +153,21 @@ describe("buildClinicalSummary", () => {
     expect((toothLine ?? "").length).toBeLessThanOrEqual(500);
   });
 
+  it("retains a tooth that brings the rendered section to exactly 500 chars", () => {
+    const result = buildClinicalSummary(coDinhSchema, {
+      dental_chart: Object.fromEntries(
+        PERMANENT_FDI.slice(0, 10).map((fdi, index) => [
+          fdi,
+          { condition: "decay", note: "N".repeat(index === 9 ? 16 : 40) } as ToothStatus,
+        ])
+      ),
+    });
+    const toothLine = result.split("\n").find((line) => line.startsWith("Răng:"));
+
+    expect(toothLine?.length).toBe(500);
+    expect(toothLine).toContain(`22(sâu — ${"N".repeat(16)})`);
+  });
+
   it("counts the ellipsis within each 40-character tooth label and note cap", () => {
     const result = buildClinicalSummary(coDinhSchema, {
       dental_chart: {
@@ -233,6 +248,17 @@ describe("buildClinicalSummary", () => {
     expect(result).not.toContain("0901234567");
     expect(result).not.toContain("090 123 4567");
     expect(result).toContain("[SĐT]");
+  });
+
+  it("scrubs Vietnamese landlines from free text and tooth notes", () => {
+    const result = buildClinicalSummary(coDinhSchema, {
+      ly_do_kham: "Liên hệ 024 1234 5678",
+      dental_chart: { 16: { condition: "decay", note: "Gọi 028-1234-5678" } },
+    });
+
+    expect(result).not.toContain("024 1234 5678");
+    expect(result).not.toContain("028-1234-5678");
+    expect(result.match(/\[SĐT\]/g)).toHaveLength(2);
   });
 
   it("ignores malformed dental chart entries without throwing", () => {

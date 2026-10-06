@@ -45,6 +45,14 @@ describe("scrubPII", () => {
       expect(scrubPII("Tel: +84 90 123 4567")).toBe("Tel: [SĐT]");
     });
 
+    it.each([
+      ["024 1234 5678", "Gọi 024 1234 5678 để hẹn", "Gọi [SĐT] để hẹn"],
+      ["028-1234-5678", "SĐT: 028-1234-5678", "SĐT: [SĐT]"],
+      ["+84 24 1234 5678", "Tel: +84 24 1234 5678", "Tel: [SĐT]"],
+    ])("redacts Vietnamese landline %s", (_phone, input, expected) => {
+      expect(scrubPII(input)).toBe(expected);
+    });
+
     it("does not match short numbers like 12345", () => {
       expect(scrubPII("Răng số 12345")).toBe("Răng số 12345");
     });
@@ -55,6 +63,10 @@ describe("scrubPII", () => {
 
     it("does not match inside longer digit sequence", () => {
       expect(scrubPII("ID: 123045678901234")).toBe("ID: 123045678901234");
+    });
+
+    it("does not match a landline inside a longer digit sequence", () => {
+      expect(scrubPII("ID: 1024123456789")).toBe("ID: 1024123456789");
     });
   });
 });
