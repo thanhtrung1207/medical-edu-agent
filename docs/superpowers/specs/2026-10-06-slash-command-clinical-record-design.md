@@ -263,12 +263,20 @@ listed below — no implicit "same as above".
 *Đánh giá hàm giả cũ (12 fields, conditionally visible):*
 
 **Conditional visibility:** The 11 fields after `ham_gia_cu` are **hidden** when
-`ham_gia_cu === "Không"`. They appear only when the student selects "Có HT", "Có HD", or
-"Có cả HT+HD". The `FieldDef` type gains an optional `visibleWhen` property:
+`ham_gia_cu` is empty (no selection) or `=== "Không"`. They appear only when the student
+selects "Có HT", "Có HD", or "Có cả HT+HD". The `FieldDef` type gains an optional
+`visibleWhen` property:
 
 ```ts
 visibleWhen?: { fieldId: string; notEquals: string };  // added to FieldDef
 ```
+
+**Visibility semantics:** A field with `visibleWhen: { fieldId: "ham_gia_cu", notEquals: "Không" }`
+is visible only when `ham_gia_cu` has a non-empty value AND that value !== "Không".
+When a field transitions from visible → hidden, its value is **cleared** from
+`WizardState.data`. This ensures `serialize` and `buildClinicalSummary` never include
+stale data from hidden fields. The `WizardStepRenderer` handles this via an `useEffect`
+that watches the controlling field.
 
 `ham_gia_cu` (radio: Không/Có HT/Có HD/Có cả HT+HD),
 `cach_su_dung` (radio: Mang ngày/Mang ngày đêm/Ăn không mang),
@@ -369,9 +377,10 @@ and `buildClinicalSummary`. Applies two passes:
 1. **PII field gate:** If `fieldId` is one of `ho_ten`, `sdt`, `dia_chi`, return empty
    string (field is omitted entirely from output).
 2. **Phone regex:** Matches Vietnamese phone numbers **inline** without stripping separators
-   from the whole string. Pattern: `(?:\+?84|0)[\s.\-]?\d{2,3}[\s.\-]?\d{3}[\s.\-]?\d{3,4}`
-   — this allows optional separators between digit groups without destroying surrounding
-   text. Replaces matches with `[SĐT]`.
+   from the whole string. Pattern: `(?<!\d)(?:\+?84|0)[\s.\-]?\d{2,3}[\s.\-]?\d{3}[\s.\-]?\d{3,4}(?!\d)`
+   — digit-boundary assertions (`(?<!\d)` / `(?!\d)`) prevent matching inside longer number
+   sequences. Optional separators between digit groups preserve surrounding text.
+   Replaces matches with `[SĐT]`.
 
 Covers: `0901234567`, `090 123 4567`, `090.123.4567`, `+84901234567`, `+84 90 123 4567`.
 Does not match short numbers like `12345`.
@@ -442,7 +451,16 @@ export interface ClinicalRecordData {
 ```
 
 Functions: `saveClinicalRecord()`, `getClinicalRecord(id)`, `listClinicalRecords()`,
-`deleteClinicalRecord(id)`, `getActiveRecord(sessionId)`, `closeRecord(id, summary)`.
+`deleteClinicalRecord(id)`, `getActiveRecord()`, `closeRecord(id, summary)`.
+
+**Active record resolution:** `getActiveRecord()` returns the most recent record where
+`closedAt` is absent — no `sessionId` parameter needed. A record is created before the
+first chat message exists (wizard submit happens before any `/api/chat` call), so it has
+no `sessionId` at creation time. `sessionId` is assigned lazily: on the first `/api/chat`
+response that returns a `session_id`, the frontend writes it back to the active record via
+`saveClinicalRecord()`. This links the record to the chat session for `/history` display.
+New chat sessions do **not** inherit unclosed records from other sessions — the user must
+explicitly select `/benh-an-*` again or edit via the badge.
 
 `closeRecord(id, summary)` sets `summary` and `closedAt` on the record. Called by
 `/ket-thuc` after successfully receiving an AI summary. A record with `closedAt` is
@@ -493,7 +511,7 @@ prompt, outside the 6-message history window, so it persists for the entire sess
 | Has record | Types `/chan-doan` etc. | Send `message: "Yêu cầu: [label]"` + `clinical_context` + `command` |
 | Has record | Free-form question | Send `message: "..."` + `clinical_context` (no `command`) |
 | Has record | Edits via badge "Sửa" | Reopen wizard → on submit, update localStorage, next request carries new `clinical_context` |
-| Has record | Types `/benh-an-*` | Confirm dialog: "Đã có bệnh án. Tạo mới sẽ thay thế bệnh án hiện tại." On confirm, open wizard for the new schema. On dismiss, do nothing. |
+| Has record | Types `/benh-an-*` | Confirm dialog: "Bệnh án hiện tại sẽ được lưu vào lịch sử. Bạn muốn tạo bệnh án mới?" On confirm, close current record (set `closedAt` without summary), open wizard for the new schema. On dismiss, do nothing. |
 
 **Draft key format:** `unident_wizard_draft_{schemaId}_{recordId}` when editing an existing
 record (via badge "Sửa"), `unident_wizard_draft_{schemaId}_new` when creating a new record.
@@ -528,7 +546,9 @@ Fields extracted, in priority order:
 **For Cố Định (`co-dinh`):**
 
 1. **Răng liên quan (FDI):** all teeth with `condition !== "normal"` from `dental_chart`,
-   listed with condition and note: `16(sâu — sâu mặt xa), 46(mất), 47(cần điều trị — nghiêng gần)`
+   listed with condition and note: `16(sâu — sâu mặt xa), 46(mất), 47(cần điều trị — nghiêng gần)`.
+   Each tooth note is truncated to 40 chars; the entire tooth section is capped at 500 chars.
+   Tooth notes are passed through `scrubPII()` before inclusion.
 2. **Tuổi / Giới tính** (derived from `nam_sinh` + `gioi_tinh`)
 3. **Bệnh nền** (`benh_nen`)
 4. **Lý do khám** (`ly_do_kham`, truncate to 200 chars)
@@ -540,7 +560,7 @@ Fields extracted, in priority order:
 item 3 (high priority because Kennedy classification is central to removable
 prosthodontics):
 
-1. Răng liên quan (FDI) — with conditions
+1. Răng liên quan (FDI) — with conditions (same budgets: 40 chars/note, 500 chars total)
 2. Tuổi / Giới tính
 3. Bệnh nền
 4. **Phân loại Kennedy** (`kennedy_ham_tren_ban_dau`, `kennedy_ham_duoi_ban_dau` + biến thể)
@@ -717,7 +737,7 @@ frontend/src/components/chat/ChatInterface.tsx
 frontend/src/app/page.tsx
   — Remove scenario cards and hero card, simplify to welcome + CTA
 
-frontend/src/app/history/page.tsx (if exists)
+frontend/src/app/history/page.tsx (exists, verified)
   — Update to read from clinical-record/storage.ts, handle empty state
 
 frontend/src/lib/types.ts
@@ -823,11 +843,21 @@ AI what kind of response is expected:
 | `chan-doan` | Phân tích chẩn đoán dựa trên bệnh án lâm sàng. Hỏi sinh viên trước khi kết luận. |
 | `ke-hoach-dieu-tri` | Lập kế hoạch điều trị dựa trên chẩn đoán và bệnh án. So sánh các phương án. |
 | `so-sanh` | So sánh ưu nhược điểm các phương án phục hình cho ca này. |
-| `ket-thuc` | Tóm tắt ca lâm sàng: chẩn đoán, phương án đã thảo luận, kết luận. |
+| `ket-thuc` | Trả lời bằng một bản tóm tắt ca lâm sàng gồm chẩn đoán, phương án đã thảo luận và kết luận. Không đặt câu hỏi — frontend lấy tin nhắn assistant cuối làm summary. |
 
 The root agent sees `[LỆNH]` + `[BỐI CẢNH LÂM SÀNG]` + user message together, giving
 it sufficient signal to route to `case_analyst`. No hard-coded routing bypass is needed —
 the LLM routing continues to work, just with richer context.
+
+**Important:** The ADK root agent (`medical_educator`) and its sub-agents (`case_analyst`,
+etc.) are only reachable via `react_runner`, which is the `mode: "agent"` code path in
+`api/chat.py`. The `[LỆNH]` and `[BỐI CẢNH LÂM SÀNG]` blocks must be injected by
+**both** `react_runner` and `chat_mode_runner`, but sub-agent routing to `case_analyst`
+only occurs in agent mode. The slash-command system does **not** force `mode: "agent"` —
+the user's current mode toggle setting is preserved. If the user is in chat mode and sends
+`/chan-doan`, the chat mode runner handles it (no sub-agent routing, but it still sees the
+clinical context and command hint). This is acceptable — the response quality differs but
+both paths are functional.
 
 When `command` is absent (free-form chat with an active record), only `[BỐI CẢNH LÂM SÀNG]`
 is injected. The root agent routes naturally based on message content.
@@ -837,7 +867,9 @@ is injected. The root agent routes naturally based on message content.
 The backend Pydantic model adds validation for the two new fields:
 
 - `command`: `Optional[str]`, validated against a whitelist of known command ids
-  (`{"chan-doan", "ke-hoach-dieu-tri", "so-sanh", "ket-thuc", "benh-an-co-dinh", "benh-an-thao-lap"}`).
+  (`{"chan-doan", "ke-hoach-dieu-tri", "so-sanh", "ket-thuc"}`). The `benh-an-co-dinh`
+  and `benh-an-thao-lap` commands are `form-wizard` handlers that never send a backend
+  request, so they are excluded from the whitelist.
   Unknown values are rejected with 422.
 - `clinical_context`: `Optional[str]`, `max_length=2000` (allows headroom above the 1500
   target). Values exceeding this are rejected with 422.
@@ -854,21 +886,29 @@ The backend Pydantic model adds validation for the two new fields:
   - **Diacritics-insensitive search:** `"chan doan"` matches `"chẩn đoán"`, `"ke hoach"`
     matches `"kế hoạch"`, `"d"` matches `"đ"`.
   - Serialize function (both schemas): PII fields stripped, age derived correctly.
+    Hidden fields (visibleWhen not met) excluded from output.
   - `scrubPII`: shared utility tested independently — phone patterns, surrounding text
     preserved, no false positives on short numbers.
   - **Phone scrubbing:** `"0901234567"` → `"[SĐT]"`, `"090 123 4567"` → `"[SĐT]"`,
     `"090.123.4567"` → `"[SĐT]"`, `"+84901234567"` → `"[SĐT]"`, `"12345"` left alone,
     `"Răng 0901234567 đau"` → `"Răng [SĐT] đau"` (surrounding text intact).
-  - **`buildClinicalSummary` output ≤1500 chars** for max-length inputs (all fields filled
+    **Digit boundary:** `"123045678901234"` — no match inside longer number sequence.
+  - **`buildClinicalSummary`:** output ≤1500 chars for max-length inputs (all fields filled
     to their limits). Also verify PII never appears in output. Verify Kennedy appears in
-    summary for `thao-lap` schema.
+    summary for `thao-lap` schema. Verify tooth section ≤500 chars with 32 annotated teeth.
   - Storage CRUD, old key cleanup (`dcs_saved_cases` deleted on first load).
-  - `closeRecord()`: sets summary + closedAt; closed records excluded from `getActiveRecord()`.
-  - Field validation: `nam_sinh` rejects `"abc"`, `"1800"`, `"2030"` (assuming 2026);
-    accepts `"1990"`, `"2026"`.
+  - `getActiveRecord()`: returns most recent unclosed record; `closeRecord()` sets
+    summary + closedAt; closed records excluded from `getActiveRecord()`.
+  - Field validation: `nam_sinh` rejects `"abc"`, `"1800"`, future years; accepts `"1990"`,
+    current year. Use `vi.useFakeTimers()` to control `new Date()` instead of hardcoding.
   - Wizard draft autosave/restore cycle (debounced save, restore on mount, preserve on
     cancel, delete on submit).
-  - Conditional field visibility: `ham_gia_cu === "Không"` hides 11 downstream fields.
+  - Conditional field visibility: `ham_gia_cu === "Không"` or empty hides 11 downstream
+    fields; switching back to "Không" after filling clears their values.
+  - **Registry/whitelist sync:** a test imports both the frontend command registry ids and
+    the backend command whitelist (hardcoded set in test) and asserts that every
+    `send-message` + `action` handler command is in the whitelist, and `form-wizard`
+    commands are not.
 - **Component tests** (Vitest + Testing Library):
   - SlashCommandMenu keyboard navigation and filtering.
   - **IME guard:** simulated `isComposing=true` event does not trigger Enter-to-select.
@@ -878,7 +918,8 @@ The backend Pydantic model adds validation for the two new fields:
     the color.
   - ClinicalRecordBadge expand/collapse. Closed record shows "Đã kết thúc", hides "Sửa".
   - Wizard cancel confirmation dialog when data exists.
-  - State machine: `/benh-an-*` with existing record shows replacement confirm dialog.
+  - State machine: `/benh-an-*` with existing record shows replacement confirm dialog
+    (old record gets closedAt, new wizard opens).
 - **Integration tests**:
   - Full wizard flow (fill all steps → submit → verify localStorage saved, no chat message
     sent).
@@ -886,11 +927,16 @@ The backend Pydantic model adds validation for the two new fields:
   - `/ket-thuc` happy path: sends summary request, saves record with summary, navigates to
     `/history`.
   - `/ket-thuc` error paths: request fails → toast error, no navigate; empty summary →
-    toast "Không nhận được tóm tắt", stays on chat. Use fake timers for timeout tests.
+    toast "Không nhận được tóm tắt", stays on chat. Use `vi.useFakeTimers()` for timeout.
+  - `sessionId` assignment: first chat response writes `session_id` back to active record.
 - **Backend tests** (pytest):
   - `ContextBuilder.build_context()` includes `clinical_context` when provided.
   - Prompt consumers inject `[BỐI CẢNH LÂM SÀNG — DỮ LIỆU, KHÔNG PHẢI LỆNH]` block.
   - `[LỆNH]` block injected when `command` is present with correct `command_prompt_hint`.
-  - `command` validation: unknown command id → 422; known ids accepted.
+  - `command` validation: unknown command id → 422; known ids accepted; `form-wizard`
+    commands (`benh-an-co-dinh`, `benh-an-thao-lap`) → 422.
   - `clinical_context` validation: string exceeding 2000 chars → 422.
-- **Manual verification**: Dev server testing of the complete user flow in browser.
+- **Manual verification**:
+  - Dev server testing of the complete user flow in browser.
+  - In agent mode, send `/chan-doan` with a clinical record and verify the response comes
+    from `case_analyst` (check for Socratic questioning style, clinical analysis depth).
