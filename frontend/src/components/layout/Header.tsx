@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Menu, Moon, Settings, Stethoscope, Sun } from "lucide-react";
-import { SettingsModal } from "@/components/case/SettingsModal";
+import { LogOut, Menu, Moon, Stethoscope, Sun } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface HeaderProps {
@@ -15,7 +14,6 @@ interface HeaderProps {
 export function Header({ onToggleDrawer, drawerOpen }: HeaderProps) {
   const router = useRouter();
   const [dark, setDark] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const { user, logout } = useAuth();
 
   // Initialise theme from system / stored preference.
@@ -91,15 +89,6 @@ export function Header({ onToggleDrawer, drawerOpen }: HeaderProps) {
         )}
         <button
           type="button"
-          onClick={() => setSettingsOpen(true)}
-          title="Quản lý dữ liệu học tập"
-          aria-label="Quản lý dữ liệu học tập"
-          className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          <Settings className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
           onClick={toggleTheme}
           aria-label={dark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
           className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -107,7 +96,6 @@ export function Header({ onToggleDrawer, drawerOpen }: HeaderProps) {
           {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </button>
       </div>
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </header>
   );
 }
