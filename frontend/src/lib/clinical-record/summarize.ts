@@ -18,20 +18,30 @@ function truncate(text: unknown, max: number, fieldId?: string): string {
   if (typeof text !== "string" || !text) return "";
 
   const scrubbed = scrubPII(text, fieldId);
-  return scrubbed.length > max ? `${scrubbed.slice(0, max)}…` : scrubbed;
+  return scrubbed.length > max ? `${scrubbed.slice(0, max - 1)}…` : scrubbed;
 }
 
 function isToothStatus(value: unknown): value is ToothStatus {
   return typeof value === "object" && value !== null && typeof (value as ToothStatus).condition === "string";
 }
 
+function isPermanentFdi(value: string): boolean {
+  if (!/^\d{2}$/.test(value)) return false;
+
+  const fdi = Number(value);
+  const quadrant = Math.floor(fdi / 10);
+  const position = fdi % 10;
+  return quadrant >= 1 && quadrant <= 4 && position >= 1 && position <= 8;
+}
+
 function buildToothSection(chart: unknown): string {
   if (typeof chart !== "object" || chart === null || Array.isArray(chart)) return "";
 
   const entries = Object.entries(chart)
-    .filter((entry): entry is [string, ToothStatus] => isToothStatus(entry[1]) && entry[1].condition !== "normal")
+    .filter((entry): entry is [string, ToothStatus] => (
+      isPermanentFdi(entry[0]) && isToothStatus(entry[1]) && entry[1].condition !== "normal"
+    ))
     .map(([fdi, status]) => [Number(fdi), status] as const)
-    .filter(([fdi]) => Number.isFinite(fdi))
     .sort(([a], [b]) => a - b);
 
   if (entries.length === 0) return "";
