@@ -25,7 +25,7 @@ function scrubValue(value: unknown, fieldId?: string): string {
   }
 
   const scrubbed = scrubPII(String(value), fieldId);
-  return scrubbed.trim() ? scrubbed : "";
+  return scrubbed.trim();
 }
 
 function isPermanentFdi(value: string): boolean {

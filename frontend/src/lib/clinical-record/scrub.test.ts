@@ -53,6 +53,15 @@ describe("scrubPII", () => {
       expect(scrubPII(input)).toBe(expected);
     });
 
+    it.each([
+      ["0203 1234 567", "Gọi 0203 1234 567 để hẹn", "Gọi [SĐT] để hẹn"],
+      ["0203.1234.567", "SĐT: 0203.1234.567", "SĐT: [SĐT]"],
+      ["+84 203 1234 567", "Tel: +84 203 1234 567", "Tel: [SĐT]"],
+      ["+84-203-1234-567", "Call +84-203-1234-567", "Call [SĐT]"],
+    ])("redacts provincial Vietnamese landline %s", (_phone, input, expected) => {
+      expect(scrubPII(input)).toBe(expected);
+    });
+
     it("does not match short numbers like 12345", () => {
       expect(scrubPII("Răng số 12345")).toBe("Răng số 12345");
     });

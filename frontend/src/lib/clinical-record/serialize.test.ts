@@ -44,6 +44,17 @@ describe("serializeClinicalRecord", () => {
     }
   });
 
+  it("derives age from a birth year with outer whitespace", () => {
+    expect(serializeClinicalRecord(coDinhSchema, { nam_sinh: " 1990 " })).toContain("Tuổi: 36");
+  });
+
+  it("trims outer whitespace from emitted field values", () => {
+    const result = serializeClinicalRecord(coDinhSchema, { nghe_nghiep: "  Giáo viên  " });
+    const adminLine = result.split("\n").find((line) => line.includes("Nghề nghiệp:"));
+
+    expect(adminLine).toBe("Nghề nghiệp: Giáo viên");
+  });
+
   it("includes dental chart conditions and notes", () => {
     const data = {
       dental_chart: {
@@ -86,6 +97,15 @@ describe("serializeClinicalRecord", () => {
 
     expect(result).toContain("Lý do đến khám: Đau răng, gọi [SĐT]");
     expect(result).not.toContain("0901234567");
+  });
+
+  it("propagates provincial landline scrubbing to serialized free text", () => {
+    const result = serializeClinicalRecord(coDinhSchema, {
+      ly_do_kham: "Gọi 0203 1234 567 hoặc +84 203 7654 321",
+    });
+
+    expect(result).toContain("Lý do đến khám: Gọi [SĐT] hoặc [SĐT]");
+    expect(result).not.toMatch(/0203 1234 567|\+84 203 7654 321/);
   });
 
   it("excludes hidden denture fields and includes them when their dependency is visible", () => {
