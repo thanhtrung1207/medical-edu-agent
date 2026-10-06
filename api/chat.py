@@ -112,10 +112,15 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
     context: Dict[str, Any] = {}
     try:
         context = svc.context_builder.build_context(
-            request.user_id, session_id, current_topic
+            request.user_id,
+            session_id,
+            current_topic,
+            clinical_context=request.clinical_context,
         )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Context build failed: %s", type(exc).__name__)
+    if request.command:
+        context["command"] = request.command
 
     # 5. Run the mode-specific runner.
     try:

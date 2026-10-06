@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # --------------------------------------------------------------------------- #
 # Chat
 # --------------------------------------------------------------------------- #
+
+VALID_COMMANDS = {"chan-doan", "ke-hoach-dieu-tri", "so-sanh", "ket-thuc"}
 
 
 class ChatRequest(BaseModel):
@@ -28,6 +30,15 @@ class ChatRequest(BaseModel):
     # Runner selector. "chat" = single web-search summary; "agent" = ReAct loop.
     # Default preserves today's behavior for callers that omit the field.
     mode: Literal["chat", "agent"] = "agent"
+    command: Optional[str] = None
+    clinical_context: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("command")
+    @classmethod
+    def validate_command(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value not in VALID_COMMANDS:
+            raise ValueError(f"Unknown command: {value}")
+        return value
 
 
 class Citation(BaseModel):

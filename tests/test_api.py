@@ -106,6 +106,57 @@ class TestChatEndpoint:
         assert body["message_id"]
         assert "answer" in body and "content" in body
 
+    def test_chat_forwards_command_and_clinical_context_to_runner(
+        self, test_client, monkeypatch
+    ):
+        from api.deps import services
+
+        captured = {}
+
+        def fake_build_context(
+            user_id, session_id, current_topic=None, clinical_context=None
+        ):
+            captured["build_context"] = {
+                "user_id": user_id,
+                "session_id": session_id,
+                "current_topic": current_topic,
+                "clinical_context": clinical_context,
+            }
+            return {"conversation_history": [], "clinical_context": clinical_context}
+
+        async def fake_run(message, context):
+            captured["runner"] = {"message": message, "context": context}
+            return {
+                "verified_answer": "Tóm tắt thử nghiệm",
+                "formatted_answer": "Tóm tắt thử nghiệm",
+                "confidence_score": 1.0,
+                "reasoning_steps": [],
+                "citations": [],
+                "warnings": [],
+                "retrieved_sources": [],
+            }
+
+        monkeypatch.setattr(
+            services.context_builder, "build_context", fake_build_context
+        )
+        monkeypatch.setattr(services.react_runner, "run", fake_run)
+
+        response = test_client.post(
+            "/api/chat",
+            json={
+                "message": "Yêu cầu: Phân tích chẩn đoán",
+                "user_id": "clinical-student",
+                "mode": "agent",
+                "command": "chan-doan",
+                "clinical_context": "36 tuổi, Răng 16 sâu",
+            },
+        )
+
+        assert response.status_code == 200
+        assert captured["build_context"]["clinical_context"] == "36 tuổi, Răng 16 sâu"
+        assert captured["runner"]["context"]["clinical_context"] == "36 tuổi, Răng 16 sâu"
+        assert captured["runner"]["context"]["command"] == "chan-doan"
+
     def test_chat_returns_source_backed_ferrule_answer(self, test_client, monkeypatch):
         """A source-grounded ferrule explanation remains visible to the learner."""
         from api.deps import services

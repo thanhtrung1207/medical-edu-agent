@@ -73,6 +73,7 @@ class ContextBuilder:
         user_id: str,
         session_id: str,
         current_topic: str = None,
+        clinical_context: str | None = None,
     ) -> dict:
         """Build history plus strict, caller-topic-scoped learning memories.
 
@@ -97,6 +98,8 @@ class ContextBuilder:
             "relevant_memories": relevant,
             "user_profile_summary": "",
         }
+        if clinical_context:
+            context["clinical_context"] = clinical_context
         logger.debug(
             "Built context for user=%s session=%s topic=%r (%d memories)",
             user_id,
