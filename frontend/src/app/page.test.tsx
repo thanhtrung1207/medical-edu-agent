@@ -4,19 +4,18 @@ import HomePage from "./page";
 
 
 describe("HomePage", () => {
-  it("renders the premium dashboard greeting and hero", () => {
+  it("renders the welcome heading and badge", () => {
     render(<HomePage />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "Chào mừng quay lại" })).toBeDefined();
+    expect(screen.getByRole("heading", { level: 1, name: "Chào mừng đến UniDent" })).toBeDefined();
     expect(screen.getByText("AI Dental Education")).toBeDefined();
-    expect(screen.getByText("Case Study: Phục hình răng sau")).toBeDefined();
-    expect(screen.getByRole("link", { name: "Tiếp tục học" }).getAttribute("href")).toBe("/case/fracture");
   });
 
-  it("keeps both existing case routes available", () => {
+  it("renders a chat CTA link pointing to /chat", () => {
     render(<HomePage />);
 
-    expect(screen.getByRole("link", { name: /Răng vỡ \/ Sâu nặng/ }).getAttribute("href")).toBe("/case/fracture");
-    expect(screen.getByRole("link", { name: /Mất răng đơn lẻ/ }).getAttribute("href")).toBe("/case/missing");
+    const ctaLink = screen.getByRole("link", { name: "Bắt đầu chat" });
+    expect(ctaLink).toBeDefined();
+    expect(ctaLink.getAttribute("href")).toBe("/chat");
   });
 });

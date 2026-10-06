@@ -10,11 +10,6 @@ vi.mock("next/navigation", () => ({
 import { Header } from "./Header";
 import { AuthProvider } from "@/contexts/AuthContext";
 
-vi.mock("@/components/case/SettingsModal", () => ({
-  SettingsModal: ({ open }: { open: boolean }) =>
-    open ? <div role="dialog">Dữ liệu học tập</div> : null,
-}));
-
 // jsdom does not implement window.matchMedia, which Header reads on mount.
 function stubMatchMedia(matches: boolean) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -144,19 +139,6 @@ describe("Header", () => {
     ).toBeDefined();
   });
 
-  it("opens the settings modal from a 44px target", () => {
-    renderHeader();
-
-    const settingsButton = screen.getByRole("button", {
-      name: "Quản lý dữ liệu học tập",
-    });
-    expect(settingsButton.className).toContain("h-11");
-    expect(settingsButton.className).toContain("w-11");
-
-    expect(screen.queryByRole("dialog")).toBeNull();
-    fireEvent.click(settingsButton);
-    expect(screen.getByRole("dialog")).toBeDefined();
-  });
 });
 
 describe("Header auth controls", () => {
