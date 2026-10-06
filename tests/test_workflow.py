@@ -20,6 +20,8 @@ pytest.importorskip("google.adk")
 
 answer_node_module = importlib.import_module("agents.workflow.answer_node")
 answer_node = answer_node_module.answer_node
+confirm_node_module = importlib.import_module("agents.workflow.confirm_node")
+confirm_node = confirm_node_module.confirm_node
 think_node_module = importlib.import_module("agents.workflow.think_node")
 think_node = think_node_module.think_node
 verify_node_module = importlib.import_module("agents.workflow.verify_node")
@@ -211,6 +213,76 @@ async def test_answer_node_drops_model_labels_without_retrieved_sources(monkeypa
     await answer_node(state)
 
     assert state["citations"] == []
+
+
+@pytest.mark.asyncio
+async def test_workflow_nodes_inject_command_and_clinical_blocks_before_history(monkeypatch):
+    captured: dict[str, str] = {}
+    context = {
+        "command": "chan-doan",
+        "clinical_context": "36 tuổi, Răng 16 sâu",
+        "conversation_history": [
+            {"role": "user", "content": "Câu hỏi trước"},
+            {"role": "user", "content": "Câu hỏi hiện tại"},
+        ],
+    }
+
+    async def confirm_run_agent(_agent, prompt: str) -> str:
+        captured["confirm"] = prompt
+        return json.dumps(
+            {
+                "confirmed_query": "Câu hỏi đã xác nhận",
+                "question_type": "clinical",
+                "specialty": "Phục hình",
+            }
+        )
+
+    async def think_run_agent(_agent, prompt: str) -> str:
+        captured["think"] = prompt
+        return json.dumps(
+            {
+                "reasoning_steps": ["Đánh giá dữ kiện."],
+                "relevant_sources": [],
+                "confidence_level": 0.9,
+            }
+        )
+
+    async def answer_run_agent(_agent, prompt: str) -> str:
+        captured["answer"] = prompt
+        return json.dumps(
+            {
+                "formatted_answer": "Nội dung hỗ trợ học tập.",
+                "difficulty_tag": "intermediate",
+            }
+        )
+
+    monkeypatch.setattr(confirm_node_module, "run_agent", confirm_run_agent)
+    monkeypatch.setattr(think_node_module, "run_agent", think_run_agent)
+    monkeypatch.setattr(think_node_module, "search_knowledge_base", lambda _: [])
+    monkeypatch.setattr(answer_node_module, "run_agent", answer_run_agent)
+
+    await confirm_node({"user_input": "Câu hỏi hiện tại", "context": context})
+    await think_node(
+        {
+            "confirmed_query": "Câu hỏi đã xác nhận",
+            "context": context,
+        }
+    )
+    await answer_node(
+        {
+            "confirmed_query": "Câu hỏi đã xác nhận",
+            "reasoning_steps": ["Đánh giá dữ kiện."],
+            "retrieved_sources": [],
+            "context": context,
+        }
+    )
+
+    assert set(captured) == {"confirm", "think", "answer"}
+    for prompt in captured.values():
+        assert prompt.index("[LỆNH]") < prompt.index("[BỐI CẢNH LÂM SÀNG")
+        assert prompt.index("[BỐI CẢNH LÂM SÀNG") < prompt.index(
+            "--- LỊCH SỬ HỘI THOẠI ---"
+        )
 
 
 @pytest.mark.asyncio

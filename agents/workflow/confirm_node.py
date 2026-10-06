@@ -18,6 +18,10 @@ from typing import Dict
 from google.adk import Agent
 
 from agents.model_config import get_primary_model
+from agents.workflow.command_hints import (
+    build_clinical_context_block,
+    build_command_block,
+)
 
 from ._runtime import AgentRuntimeError, extract_json, format_history_snippet, run_agent
 
@@ -133,11 +137,29 @@ async def confirm_node(state: Dict) -> Dict:
         The updated state dictionary.
     """
     user_input = state.get("user_input", "")
-    history = state.get("context", {}).get("conversation_history", [])
+    context = state.get("context", {})
+    context = context if isinstance(context, dict) else {}
+    history = context.get("conversation_history", [])
     # Exclude the last message (current turn) to avoid duplication
-    history = history[:-1] if history else []
+    history = history[:-1] if isinstance(history, list) and history else []
     history_snippet = format_history_snippet(history)
-    prompt = f"Câu hỏi của người dùng:\n{user_input}"
+    command = context.get("command", "")
+    clinical_context = context.get("clinical_context", "")
+    context_prefix = "\n\n".join(
+        block
+        for block in (
+            build_command_block(command) if isinstance(command, str) else "",
+            build_clinical_context_block(clinical_context)
+            if isinstance(clinical_context, str)
+            else "",
+        )
+        if block
+    )
+    prompt = "\n\n".join(
+        part
+        for part in (context_prefix, f"Câu hỏi của người dùng:\n{user_input}")
+        if part
+    )
     if history_snippet:
         prompt += (
             f"\n\n--- LỊCH SỬ HỘI THOẠI ---\n{history_snippet}"

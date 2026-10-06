@@ -122,11 +122,13 @@ async def test_chat_mode_prompt_uses_prior_conversation_history_without_current_
 
     current_turn = "Còn chống chỉ định thì sao?"
     context = {
+        "command": "chan-doan",
+        "clinical_context": "36 tuổi, Răng 16 sâu",
         "conversation_history": [
             {"role": "user", "content": "Implant là gì?"},
             {"role": "assistant", "content": "Implant thay thế chân răng mất."},
             {"role": "user", "content": current_turn},
-        ]
+        ],
     }
 
     await ChatModeRunner(llm=fake_llm).run(current_turn, context=context)
@@ -138,6 +140,8 @@ async def test_chat_mode_prompt_uses_prior_conversation_history_without_current_
         "Trợ lý: Implant thay thế chân răng mất."
     )
     assert prompt.count(current_turn) == 1
+    assert prompt.index("[LỆNH]") < prompt.index("[BỐI CẢNH LÂM SÀNG")
+    assert prompt.index("[BỐI CẢNH LÂM SÀNG") < prompt.index("NGỮ CẢNH TRƯỚC")
 
 
 @pytest.mark.asyncio

@@ -19,6 +19,10 @@ from typing import Dict, List
 from google.adk import Agent
 
 from agents.model_config import get_primary_model
+from agents.workflow.command_hints import (
+    build_clinical_context_block,
+    build_command_block,
+)
 
 from ._runtime import (
     AgentRuntimeError,
@@ -153,15 +157,34 @@ async def think_node(state: Dict) -> Dict:
     sources = search_knowledge_base(confirmed_query)
     sources_text = format_retrieved_passages(sources)
 
-    history = state.get("context", {}).get("conversation_history", [])
+    context = state.get("context", {})
+    context = context if isinstance(context, dict) else {}
+    history = context.get("conversation_history", [])
     # Exclude the last message (current turn) to avoid duplication
-    history = history[:-1] if history else []
+    history = history[:-1] if isinstance(history, list) and history else []
     history_snippet = format_history_snippet(history)
+    command = context.get("command", "")
+    clinical_context = context.get("clinical_context", "")
+    context_prefix = "\n\n".join(
+        block
+        for block in (
+            build_command_block(command) if isinstance(command, str) else "",
+            build_clinical_context_block(clinical_context)
+            if isinstance(clinical_context, str)
+            else "",
+        )
+        if block
+    )
 
-    prompt = (
-        f"Câu hỏi đã xác nhận:\n{confirmed_query}\n\n"
-        f"Chuyên khoa: {specialty}\n\n"
-        f"Các nguồn tham khảo từ knowledge base:\n{sources_text}"
+    prompt = "\n\n".join(
+        part
+        for part in (
+            context_prefix,
+            f"Câu hỏi đã xác nhận:\n{confirmed_query}\n\n"
+            f"Chuyên khoa: {specialty}\n\n"
+            f"Các nguồn tham khảo từ knowledge base:\n{sources_text}",
+        )
+        if part
     )
     if history_snippet:
         prompt += (

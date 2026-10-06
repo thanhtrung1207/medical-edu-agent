@@ -87,11 +87,13 @@ async def test_react_prompt_uses_prior_conversation_history_without_current_turn
     )
     current_turn = "Còn chống chỉ định thì sao?"
     context = {
+        "command": "chan-doan",
+        "clinical_context": "36 tuổi, Răng 16 sâu",
         "conversation_history": [
             {"role": "user", "content": "Implant là gì?"},
             {"role": "assistant", "content": "Implant thay thế chân răng mất."},
             {"role": "user", "content": current_turn},
-        ]
+        ],
     }
 
     await runner.run(current_turn, context=context)
@@ -103,6 +105,29 @@ async def test_react_prompt_uses_prior_conversation_history_without_current_turn
         "Trợ lý: Implant thay thế chân răng mất."
     )
     assert prompt.count(current_turn) == 1
+    assert prompt.index("[LỆNH]") < prompt.index("[BỐI CẢNH LÂM SÀNG")
+    assert prompt.index("[BỐI CẢNH LÂM SÀNG") < prompt.index("NGỮ CẢNH")
+
+
+def test_react_step_prompt_injects_blocks_before_history():
+    from agents.workflow.react_runner import _build_step_prompt
+
+    prompt = _build_step_prompt(
+        "System prompt",
+        "Câu hỏi hiện tại",
+        [],
+        {
+            "command": "chan-doan",
+            "clinical_context": "36 tuổi, Răng 16 sâu",
+            "conversation_history": [
+                {"role": "user", "content": "Câu hỏi trước"},
+                {"role": "user", "content": "Câu hỏi hiện tại"},
+            ],
+        },
+    )
+
+    assert prompt.index("[LỆNH]") < prompt.index("[BỐI CẢNH LÂM SÀNG")
+    assert prompt.index("[BỐI CẢNH LÂM SÀNG") < prompt.index("NGỮ CẢNH")
 
 
 @pytest.mark.asyncio

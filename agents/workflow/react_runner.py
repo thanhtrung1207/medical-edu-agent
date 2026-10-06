@@ -17,6 +17,10 @@ import unicodedata
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from agents.workflow._runtime import format_history_snippet
+from agents.workflow.command_hints import (
+    build_clinical_context_block,
+    build_command_block,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -343,17 +347,31 @@ def _build_step_prompt(
     trajectory: List[Dict[str, Any]],
     context: Dict[str, Any],
 ) -> str:
-    history = (
-        context.get("conversation_history", []) if isinstance(context, dict) else []
-    )
+    context_data = context if isinstance(context, dict) else {}
+    history = context_data.get("conversation_history", [])
     prior_history = history[:-1] if isinstance(history, list) and history else []
     history_snippet = format_history_snippet(prior_history)
-    history_block = f"\n\nNGỮ CẢNH:\n{history_snippet}\n" if history_snippet else ""
+    history_block = f"NGỮ CẢNH:\n{history_snippet}" if history_snippet else ""
+    command = context_data.get("command", "")
+    clinical_context = context_data.get("clinical_context", "")
+    prompt_blocks = [
+        block
+        for block in (
+            build_command_block(command) if isinstance(command, str) else "",
+            build_clinical_context_block(clinical_context)
+            if isinstance(clinical_context, str)
+            else "",
+        )
+        if block
+    ]
     traj_block = _render_trajectory_structure(trajectory)
     observations_block = _render_observations_section(trajectory)
     observations_suffix = f"\n\n{observations_block}" if observations_block else ""
+    context_prefix = "\n\n".join((*prompt_blocks, history_block))
+    prefix = f"{context_prefix}\n\n" if prompt_blocks else ""
+    legacy_history_block = f"\n\n{history_block}\n" if history_block else ""
     return (
-        f"{system_prompt}{history_block}\n\nCÂU HỎI: {message}\n\n"
+        f"{prefix}{system_prompt}{legacy_history_block}\n\nCÂU HỎI: {message}\n\n"
         f"TRAJECTORY HIỆN TẠI:\n{traj_block}"
         f"{observations_suffix}\n\n"
         "Trả về đúng một JSON step tiếp theo."

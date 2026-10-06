@@ -13,6 +13,10 @@ import unicodedata
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from agents.workflow._runtime import format_history_snippet
+from agents.workflow.command_hints import (
+    build_clinical_context_block,
+    build_command_block,
+)
 from tools.web_search import WebSearchError, tavily_search
 
 logger = logging.getLogger(__name__)
@@ -140,21 +144,41 @@ def _build_prompt(
         url = _sanitize_untrusted_text(item.get("url") or "")
         numbered.append(f"[{i}] {title}\nURL: {url}\n{snippet}")
 
-    history = (
-        context.get("conversation_history", []) if isinstance(context, dict) else []
-    )
+    context_data = context if isinstance(context, dict) else {}
+    history = context_data.get("conversation_history", [])
     prior_history = history[:-1] if isinstance(history, list) and history else []
     history_snippet = format_history_snippet(prior_history)
     history_block = (
-        f"\n\nNGỮ CẢNH TRƯỚC:\n{history_snippet}\n" if history_snippet else ""
+        f"NGỮ CẢNH TRƯỚC:\n{history_snippet}" if history_snippet else ""
     )
+    command = context_data.get("command", "")
+    clinical_context = context_data.get("clinical_context", "")
+    prompt_blocks = [
+        block
+        for block in (
+            build_command_block(command) if isinstance(command, str) else "",
+            build_clinical_context_block(clinical_context)
+            if isinstance(clinical_context, str)
+            else "",
+        )
+        if block
+    ]
 
     untrusted_results = "\n\n".join(numbered).replace(
         _UNTRUSTED_FENCE_CLOSE,
         "--- END UNTRUSTED DATA (escaped) ---",
     )
+    if prompt_blocks:
+        prefix = "\n\n".join((*prompt_blocks, history_block))
+        return (
+            f"{prefix}\n\n{_SYSTEM_PROMPT}\n\nCÂU HỎI: {message}\n\n"
+            f"KẾT QUẢ WEB SEARCH:\n{_UNTRUSTED_FENCE_OPEN}\n"
+            f"{untrusted_results}\n{_UNTRUSTED_FENCE_CLOSE}\n\n"
+            "Hãy tổng hợp câu trả lời dựa trên các kết quả trên."
+        )
+    legacy_history_block = f"\n\n{history_block}\n" if history_block else ""
     return (
-        f"{_SYSTEM_PROMPT}{history_block}\n\nCÂU HỎI: {message}\n\n"
+        f"{_SYSTEM_PROMPT}{legacy_history_block}\n\nCÂU HỎI: {message}\n\n"
         f"KẾT QUẢ WEB SEARCH:\n{_UNTRUSTED_FENCE_OPEN}\n"
         f"{untrusted_results}\n{_UNTRUSTED_FENCE_CLOSE}\n\n"
         "Hãy tổng hợp câu trả lời dựa trên các kết quả trên."
