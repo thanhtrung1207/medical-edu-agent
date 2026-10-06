@@ -27,8 +27,10 @@ export interface WizardStep {
   fields: FieldDef[];
 }
 
+export type SchemaId = "co-dinh" | "thao-lap";
+
 export interface ClinicalRecordSchema {
-  id: string;
+  id: SchemaId;
   title: string;
   steps: WizardStep[];
   sampleData?: Record<string, unknown>;

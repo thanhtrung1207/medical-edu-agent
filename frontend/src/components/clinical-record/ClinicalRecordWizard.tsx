@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import { isFieldVisible, type ClinicalRecordSchema, type WizardStep } from "@/lib/clinical-record/schemas";
 import { serializeClinicalRecord } from "@/lib/clinical-record/serialize";
 import type { ClinicalRecordData } from "@/lib/clinical-record/types";
@@ -159,10 +159,20 @@ export function ClinicalRecordWizard({
 
   // ── Debounced draft save whenever data changes ─────────────────────────────
   useEffect(() => {
-    // Skip the initial mount render to avoid saving an empty / initialData draft
+    // Skip the initial mount to avoid writing an empty/initialData draft.
+    // The cleanup checks whether the data reference is still the same as when
+    // the effect ran; if it is, we're in StrictMode's mount→cleanup→remount
+    // cycle (no user change), so we reset the flag so the second invocation
+    // is also treated as "first render". If the data changed (a real deps
+    // update) the flag is left alone so the next invocation schedules the timer.
     if (isFirstRender.current) {
       isFirstRender.current = false;
-      return;
+      const capturedData = stateRef.current.data;
+      return () => {
+        if (stateRef.current.data === capturedData) {
+          isFirstRender.current = true;
+        }
+      };
     }
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     draftTimerRef.current = setTimeout(() => {
@@ -188,9 +198,11 @@ export function ClinicalRecordWizard({
   };
 
   // ── Handlers ──────────────────────────────────────────────────────────────
-  const handleChange = (id: string, value: unknown) => {
+  // I-1: Wrap in useCallback so the reference is stable across renders.
+  // dispatch is guaranteed stable by useReducer, so no extra deps are needed.
+  const handleChange = useCallback((id: string, value: unknown) => {
     dispatch({ type: "SET_FIELD", id, value });
-  };
+  }, [dispatch]);
 
   const handleNext = () => {
     const step = schema.steps[state.currentStep];
@@ -230,7 +242,7 @@ export function ClinicalRecordWizard({
     const now = new Date().toISOString();
     onSubmit({
       id: crypto.randomUUID(),
-      schemaId: schema.id as "co-dinh" | "thao-lap",
+      schemaId: schema.id,
       data: state.data,
       serializedText: serializeClinicalRecord(schema, state.data),
       createdAt: now,
@@ -282,6 +294,7 @@ export function ClinicalRecordWizard({
                     ? "bg-primary text-white"
                     : "bg-slate-200 text-slate-600"
                 }`}
+                aria-current={isActive ? "step" : undefined}
               >
                 {index + 1}
               </span>

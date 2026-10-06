@@ -1,6 +1,8 @@
+import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { coDinhSchema, type ClinicalRecordSchema } from "@/lib/clinical-record/schemas";
+import * as WizardStepRendererMod from "./WizardStepRenderer";
 import {
   CANCEL_CONFIRM_TEXT,
   ClinicalRecordWizard,
@@ -11,8 +13,9 @@ import {
 
 // ── Minimal schema helpers ────────────────────────────────────────────────────
 // Single-step, no required fields — makes submit/cancel tests straightforward.
-const ONE_STEP_SCHEMA: ClinicalRecordSchema = {
-  id: "co-dinh",
+// M-2: use distinct ids so localStorage keys don't collide with coDinhSchema tests.
+const ONE_STEP_SCHEMA = {
+  id: "test-one-step",
   title: "One-Step Test",
   steps: [
     {
@@ -22,11 +25,12 @@ const ONE_STEP_SCHEMA: ClinicalRecordSchema = {
       fields: [{ id: "note", label: "Ghi chú", type: "text" }],
     },
   ],
-};
+} as unknown as ClinicalRecordSchema;
 
 // Single-step with one required text field
-const REQ_SCHEMA: ClinicalRecordSchema = {
-  id: "co-dinh",
+// M-2: distinct id "test-req"
+const REQ_SCHEMA = {
+  id: "test-req",
   title: "Req Test",
   steps: [
     {
@@ -36,7 +40,7 @@ const REQ_SCHEMA: ClinicalRecordSchema = {
       fields: [{ id: "req_field", label: "Required Field", type: "text", required: true }],
     },
   ],
-};
+} as unknown as ClinicalRecordSchema;
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
@@ -199,6 +203,34 @@ describe("ClinicalRecordWizard – 5-step stepper", () => {
   });
 });
 
+// ── I-4: aria-current="step" on active stepper item ──────────────────────────
+
+describe("ClinicalRecordWizard – stepper aria-current (I-4)", () => {
+  it("the first step indicator has aria-current='step' on initial render", () => {
+    render(<ClinicalRecordWizard schema={coDinhSchema} onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    // The active (first) step's numbered span should carry aria-current="step"
+    const activeSpan = document.querySelector('[aria-current="step"]');
+    expect(activeSpan).not.toBeNull();
+    expect(activeSpan?.textContent?.trim()).toBe("1");
+  });
+
+  it("aria-current moves to step 2 after advancing", () => {
+    render(<ClinicalRecordWizard schema={coDinhSchema} onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/Năm sinh/), { target: { value: "1990" } });
+    fireEvent.click(screen.getByLabelText("Nam"));
+    fireEvent.click(screen.getByRole("button", { name: /tiếp theo/i }));
+    const activeSpan = document.querySelector('[aria-current="step"]');
+    expect(activeSpan?.textContent?.trim()).toBe("2");
+  });
+
+  it("inactive steps do NOT have aria-current", () => {
+    render(<ClinicalRecordWizard schema={coDinhSchema} onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    const allAriaCurrentSpans = document.querySelectorAll('[aria-current="step"]');
+    // Only one step is active at a time
+    expect(allAriaCurrentSpans.length).toBe(1);
+  });
+});
+
 // ── WizardStepRenderer mounting ───────────────────────────────────────────────
 
 describe("ClinicalRecordWizard – WizardStepRenderer renders current step", () => {
@@ -262,6 +294,36 @@ describe("ClinicalRecordWizard – navigation", () => {
   });
 });
 
+// ── I-1: handleChange useCallback stability ────────────────────────────────────
+
+describe("ClinicalRecordWizard – handleChange stability (I-1)", () => {
+  it("onChange passed to WizardStepRenderer is the same reference across re-renders (useCallback)", () => {
+    // Spy on the WizardStepRenderer export to capture the onChange prop reference on each render.
+    // Before fix: handleChange is recreated each render → references differ.
+    // After fix: useCallback([dispatch]) → references are identical.
+    const spy = vi.spyOn(WizardStepRendererMod, "WizardStepRenderer");
+
+    render(
+      <ClinicalRecordWizard schema={ONE_STEP_SCHEMA} onSubmit={vi.fn()} onCancel={vi.fn()} />,
+    );
+    // Trigger a re-render by dispatching SET_FIELD via a field change
+    fireEvent.change(screen.getByLabelText(/Ghi chú/), { target: { value: "stability-test" } });
+
+    // At least 2 renders (initial + after SET_FIELD)
+    expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    // Extract all captured onChange references
+    const onChanges = spy.mock.calls.map((args) => args[0].onChange);
+    const first = onChanges[0];
+    const last = onChanges[onChanges.length - 1];
+
+    // With useCallback the reference must be stable
+    expect(first).toBe(last);
+
+    spy.mockRestore();
+  });
+});
+
 // ── Draft save (debounced) ────────────────────────────────────────────────────
 
 describe("ClinicalRecordWizard – draft save debounced", () => {
@@ -271,7 +333,7 @@ describe("ClinicalRecordWizard – draft save debounced", () => {
     );
     fireEvent.change(screen.getByLabelText(/Ghi chú/), { target: { value: "hello" } });
     // Timer not advanced yet
-    expect(localStorage.getItem(draftKey("co-dinh"))).toBeNull();
+    expect(localStorage.getItem(draftKey("test-one-step"))).toBeNull();
   });
 
   it("saves draft to localStorage after DRAFT_DELAY_MS on data change", () => {
@@ -282,7 +344,7 @@ describe("ClinicalRecordWizard – draft save debounced", () => {
     act(() => {
       vi.advanceTimersByTime(DRAFT_DELAY_MS);
     });
-    const raw = localStorage.getItem(draftKey("co-dinh"));
+    const raw = localStorage.getItem(draftKey("test-one-step"));
     expect(raw).not.toBeNull();
     expect(JSON.parse(raw!)).toMatchObject({ note: "hello" });
   });
@@ -300,8 +362,8 @@ describe("ClinicalRecordWizard – draft save debounced", () => {
     act(() => {
       vi.advanceTimersByTime(DRAFT_DELAY_MS);
     });
-    expect(localStorage.getItem(draftKey("co-dinh", "rec-42"))).not.toBeNull();
-    expect(localStorage.getItem(draftKey("co-dinh"))).toBeNull(); // wrong key not written
+    expect(localStorage.getItem(draftKey("test-one-step", "rec-42"))).not.toBeNull();
+    expect(localStorage.getItem(draftKey("test-one-step"))).toBeNull(); // wrong key not written
   });
 
   it("saves draft immediately (synchronously) when Next is clicked", () => {
@@ -325,6 +387,26 @@ describe("ClinicalRecordWizard – draft save debounced", () => {
     localStorage.clear();
     fireEvent.click(screen.getByRole("button", { name: /quay lại/i }));
     expect(localStorage.getItem(draftKey("co-dinh"))).not.toBeNull();
+  });
+});
+
+// ── I-3: StrictMode double-mount must not write a spurious draft ──────────────
+
+describe("ClinicalRecordWizard – StrictMode draft safety (I-3)", () => {
+  it("does not write a spurious draft on StrictMode double-mount before any user interaction", () => {
+    // In React 18 StrictMode, effects are mounted → cleaned up → re-mounted.
+    // Without the fix, the second invocation of the debounce effect skips the
+    // isFirstRender guard and schedules a timer that writes an empty draft.
+    render(
+      <ClinicalRecordWizard schema={ONE_STEP_SCHEMA} onSubmit={vi.fn()} onCancel={vi.fn()} />,
+      { wrapper: ({ children }) => <StrictMode>{children}</StrictMode> },
+    );
+    // Advance past debounce window — no user interaction occurred
+    act(() => {
+      vi.advanceTimersByTime(DRAFT_DELAY_MS);
+    });
+    // No draft should have been written
+    expect(localStorage.getItem(draftKey("test-one-step"))).toBeNull();
   });
 });
 
@@ -374,7 +456,8 @@ describe("ClinicalRecordWizard – draft restore", () => {
 
 describe("ClinicalRecordWizard – submit", () => {
   beforeEach(() => {
-    vi.stubGlobal("crypto", { randomUUID: () => "test-uuid-1234" });
+    // M-1: use vi.spyOn instead of vi.stubGlobal to avoid replacing globalThis.crypto entirely
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("test-uuid-1234" as `${string}-${string}-${string}-${string}-${string}`);
   });
 
   it("calls onSubmit with a ClinicalRecordData on valid last-step submit", () => {
@@ -386,7 +469,8 @@ describe("ClinicalRecordWizard – submit", () => {
     expect(onSubmit).toHaveBeenCalledOnce();
     const record = onSubmit.mock.calls[0][0];
     expect(record.id).toBe("test-uuid-1234");
-    expect(record.schemaId).toBe("co-dinh");
+    // M-2: schemaId now comes from "test-one-step"
+    expect(record.schemaId).toBe("test-one-step");
     expect(typeof record.data).toBe("object");
     expect(typeof record.serializedText).toBe("string");
     expect(record.serializedText.length).toBeGreaterThan(0);
@@ -396,7 +480,7 @@ describe("ClinicalRecordWizard – submit", () => {
   });
 
   it("removes the exact draft key from localStorage on submit", () => {
-    const key = draftKey("co-dinh");
+    const key = draftKey("test-one-step");
     localStorage.setItem(key, JSON.stringify({}));
     render(
       <ClinicalRecordWizard schema={ONE_STEP_SCHEMA} onSubmit={vi.fn()} onCancel={vi.fn()} />,
@@ -406,7 +490,7 @@ describe("ClinicalRecordWizard – submit", () => {
   });
 
   it("removes the keyed draft (with recordId) on submit", () => {
-    const key = draftKey("co-dinh", "rec-5");
+    const key = draftKey("test-one-step", "rec-5");
     localStorage.setItem(key, JSON.stringify({}));
     render(
       <ClinicalRecordWizard
@@ -466,7 +550,7 @@ describe("ClinicalRecordWizard – cancel", () => {
 
   it("retains draft in localStorage when cancel is confirmed (dirty data)", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    const key = draftKey("co-dinh");
+    const key = draftKey("test-one-step");
     render(
       <ClinicalRecordWizard schema={ONE_STEP_SCHEMA} onSubmit={vi.fn()} onCancel={vi.fn()} />,
     );
