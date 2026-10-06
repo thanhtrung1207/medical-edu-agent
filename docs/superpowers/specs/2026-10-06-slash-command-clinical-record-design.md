@@ -20,9 +20,10 @@ học tập. Không nhập thông tin bệnh nhân thật."* The serialize funct
 
 ## Architecture
 
-- **Frontend-driven slash-command system** with an extensible registry (commands compose
-  a structured text message and send it through the existing `/api/chat` endpoint; one
-  optional `command` field is added to `ChatRequest` — see §6).
+- **Frontend-driven slash-command system** with an extensible registry. Commands compose
+  messages sent through the existing `/api/chat` endpoint. Two additive fields on
+  `ChatRequest`: `command` (slash-command id) and `clinical_context` (condensed record
+  summary injected into every LLM call as a dedicated context block — see §6).
 - **Two clinical record schemas** (Phục Hình Cố Định and Phục Hình Tháo Lắp) rendered as
   a 5-step stepper wizard inline in the chat message area.
 - **Interactive dental chart** with per-tooth status annotation, replacing the simple
@@ -34,7 +35,8 @@ học tập. Không nhập thông tin bệnh nhân thật."* The serialize funct
 - Next.js App Router (existing)
 - React state + localStorage for clinical record persistence (same pattern as current `case-storage.ts`)
 - Tailwind CSS (existing)
-- One additive backend change: optional `command` field on `ChatRequest` (see §6)
+- Two additive backend fields: `command` and `clinical_context` on `ChatRequest`, plus
+  `ContextBuilder` injection (see §6)
 
 ---
 
@@ -67,7 +69,9 @@ A `CommandRegistry` class holding a `Map<string, SlashCommand>`. Public API:
 - `register(cmd: SlashCommand): void`
 - `getAll(): SlashCommand[]`
 - `getById(id: string): SlashCommand | undefined`
-- `search(query: string): SlashCommand[]` — fuzzy match on `id` + `label`
+- `search(query: string): SlashCommand[]` — diacritics-insensitive fuzzy match on `id` +
+  `label`. Normalizes input with `normalize("NFD")` + strip combining marks + `đ→d`, so
+  typing `chan doan` matches `chẩn đoán`.
 - `getByCategory(cat: CommandCategory): SlashCommand[]`
 
 Exported singleton: `const commandRegistry = new CommandRegistry()`.
@@ -83,31 +87,39 @@ Registers the 6 default commands on module load:
 | `chan-doan` | Phân tích chẩn đoán | analysis | true | send-message | — |
 | `ke-hoach-dieu-tri` | Lập kế hoạch điều trị | analysis | true | send-message | — |
 | `so-sanh` | So sánh phương án phục hình | analysis | true | send-message | — |
-| `ket-thuc` | Tóm tắt và lưu case | analysis | true | send-message | — |
+| `ket-thuc` | Tóm tắt và lưu case | analysis | true | **action** | — |
 
-The `/ket-thuc` command reuses the existing finish-case flow: sends a summary-request message
-to the backend, receives the AI summary, saves the clinical record + summary to localStorage
-via `clinical-record/storage.ts`, and navigates to `/history`.
+The `/ket-thuc` command has side-effects beyond sending a message: it sends a summary
+request (with `clinical_context` so the AI can summarize the correct case), waits for the
+AI response, saves the clinical record + summary to localStorage via
+`clinical-record/storage.ts`, then navigates to `/history`. Error handling:
+- If the request fails or times out: show toast error, do **not** navigate or save.
+- If the response has no usable summary: show toast "Không nhận được tóm tắt", stay on chat.
+- Summary is extracted from the last assistant message in the response.
 
 ### 1.2 Popup UI
 
 File: `frontend/src/components/chat/SlashCommandMenu.tsx`
 
+**Menu trigger:** The menu opens when the textarea value (after `trimStart()`) starts with
+`/`. Close the menu when: user types a space after the command word (to allow normal `/`
+usage like "1/2"), presses Esc, backspaces past the `/`, or clicks outside.
+
 Behavior:
-- Appears when user types `/` as the first character in the textarea (or `/` preceded only by whitespace).
 - Positioned above the textarea input, anchored to the bottom of the chat area.
-- Groups commands by `category` with section headers ("Ca lâm sàng", "Phân tích", "Cài đặt").
+- Groups commands by `category` with section headers ("Ca lâm sàng", "Phân tích").
 - Each item shows: icon + label + short description.
-- Keyboard: Arrow up/down to navigate, Enter to select, Esc or Backspace-past-`/` to dismiss.
+- Keyboard: Arrow up/down to navigate, Enter to select, Esc to dismiss.
+- **IME guard:** All keyboard handlers check `event.nativeEvent.isComposing === true` and
+  skip processing if so — prevents Telex/VNI composition from triggering Enter-to-select.
 - Typing after `/` filters the list via `registry.search(query)`.
-- Click outside = dismiss.
 
 When a command is selected:
 - `handler = "form-wizard"`: clear the textarea, mount the `ClinicalRecordWizard` component
   inline in the chat area with the schema identified by `formSchemaId`.
-- `handler = "send-message"`: if `requiresClinicalRecord` and no active record exists, show
-  a toast "Vui lòng tạo bệnh án trước" and auto-insert `/benh-an-co-dinh` into the textarea.
-  Otherwise, send a **short instruction message** (see §2.7 Message Sending Strategy).
+- `handler = "send-message"`: resolve via the **record state machine** (see §2.7).
+- `handler = "action"`: execute the command's action handler directly (currently only
+  `/ket-thuc`).
 
 ### 1.3 Integration with ChatInterface
 
@@ -117,14 +129,15 @@ New state:
 - `slashMenuOpen: boolean`
 - `slashQuery: string` (characters typed after `/`)
 - `activeClinicalRecord: ClinicalRecordData | null` (persisted to localStorage)
-- `clinicalRecordSentInSession: boolean` — tracks whether the full serialized text has
-  already been sent in the current chat session (reset on page load / session switch)
 - `wizardOpen: boolean`
 - `wizardSchemaId: string | null`
 
-The existing textarea `onChange` handler gains a check: if the value starts with `/`, open the
-slash menu and pass the remainder as `slashQuery`. The textarea is not cleared until a command
-is selected.
+No sent-tracking state is needed. When `activeClinicalRecord` exists, every outgoing
+`ChatRequest` includes `clinical_context: buildClinicalSummary(schema, record.data)`.
+When it does not exist, `clinical_context` is omitted.
+
+The existing textarea `onChange` handler gains a check: if `trimStart().startsWith("/")`,
+open the slash menu and pass the remainder as `slashQuery`.
 
 New child components rendered inside `ChatInterface`:
 - `<SlashCommandMenu>` (conditional on `slashMenuOpen`)
@@ -180,7 +193,10 @@ export interface ClinicalRecordSchema {
 
 ### 2.2 Schema: Phục Hình Cố Định (`co-dinh`)
 
-5 steps, 49 fields total:
+5 steps, 49 fields total. **Required fields** (marked with `required: true`):
+`nam_sinh`, `gioi_tinh`, `ly_do_kham`, `dental_chart` (at least 1 tooth with any status
+annotation), `chan_doan_lam_sang`. Validation for `nam_sinh`: must be 4 digits,
+`1900 ≤ year ≤ currentYear`, derived age `≥ 0`.
 
 **Step 1 — Hành chính** (7 fields):
 `ho_ten` (text, half), `nam_sinh` (text, half), `gioi_tinh` (radio: Nam/Nữ, half),
@@ -221,8 +237,9 @@ export interface ClinicalRecordSchema {
 
 ### 2.3 Schema: Phục Hình Tháo Lắp (`thao-lap`)
 
-5 steps, 60 fields total. Shares Step 1 and Step 5 with Cố Định. Steps 2–4 extend or
-replace the Cố Định equivalents. Every field is listed below — no implicit "same as above".
+5 steps, 60 fields total. Shares Step 1 and Step 5 with Cố Định (including the same
+required fields). Steps 2–4 extend or replace the Cố Định equivalents. Every field is
+listed below — no implicit "same as above".
 
 **Step 1 — Hành chính** (7 fields, identical to Cố Định):
 `ho_ten` (text, half), `nam_sinh` (text, half), `gioi_tinh` (radio: Nam/Nữ, half),
@@ -292,12 +309,15 @@ interface ClinicalRecordWizardProps {
 ```
 
 Renders:
-1. **Stepper header** — 5 numbered circles with labels, active step highlighted. On mobile,
+1. **Disclaimer banner** at the top: *"Đây là bệnh án giả định cho mục đích học tập.
+   Không nhập thông tin bệnh nhân thật."* (muted text, always visible).
+2. **Stepper header** — 5 numbered circles with labels, active step highlighted. On mobile,
    uses `shortLabel` to save space.
-2. **Form body** — renders fields for the current step using a `WizardStepRenderer` component.
+3. **Form body** — renders fields for the current step using a `WizardStepRenderer` component.
    Fields with `half: true` are placed in a 2-column CSS grid. Field type `dental-chart`
-   renders the `DentalChart` component.
-3. **Navigation footer** — "Hủy" (cancel), "Quay lại" (prev step, hidden on step 1),
+   renders the `DentalChart` component. All `textarea` fields show a hint below:
+   *"Không ghi tên/SĐT thật."*
+4. **Navigation footer** — "Hủy" (cancel), "Quay lại" (prev step, hidden on step 1),
    "Tiếp theo" (next step) / "Gửi bệnh án" (submit, on step 5).
 
 State managed with `useReducer`:
@@ -308,6 +328,15 @@ interface WizardState {
   errors: Record<string, string>;
 }
 ```
+
+**Autosave:** On every step transition ("Tiếp theo" / "Quay lại"), the wizard saves a draft
+to localStorage under key `unident_wizard_draft_{schemaId}`. On mount, if a draft exists
+for the same `schemaId` and no `initialData` was provided, restore from draft. On successful
+submit or explicit cancel, delete the draft.
+
+**Cancel confirmation:** If any field has been filled (data is non-empty), "Hủy" shows a
+confirm dialog: *"Bạn có chắc muốn hủy? Dữ liệu đã nhập sẽ được lưu nháp."* — cancel
+preserves the draft, confirm navigates away.
 
 Validation: on "Tiếp theo", validate required fields for the current step. Show inline error
 messages. Block advancement until errors are resolved.
@@ -323,6 +352,17 @@ File: `frontend/src/lib/clinical-record/serialize.ts`
 from `nam_sinh`), `gioi_tinh`, and `nghe_nghiep` are included — these are clinically
 relevant and non-identifying. The full data remains in `ClinicalRecordData.data` in
 localStorage for the student to review.
+
+**Free-text scrubbing:** Before serializing any `textarea` or `text` field value, apply a
+regex pass to redact Vietnamese phone numbers. Strip separators (spaces, dots, dashes) first,
+then match `(?:\+?84|0)\d{9,10}` (covers `0901234567`, `090 123 4567`, `090.123.4567`,
+`+84901234567`). Replace matches with `[SĐT]`. This is a best-effort safety net — the
+primary defense is the UI hint discouraging real data.
+
+**"Răng liên quan (FDI)"** in the serialized header is derived automatically from the
+`dental_chart` field: all teeth where `condition !== "normal"`, listed by FDI number.
+Note: `Record<number, ToothStatus>` keys become strings after JSON serialization; parse
+them back to numbers when reading from localStorage.
 
 Produces structured text sent to the backend:
 
@@ -370,29 +410,97 @@ export interface ClinicalRecordData {
 Functions: `saveClinicalRecord()`, `getClinicalRecord(id)`, `listClinicalRecords()`,
 `deleteClinicalRecord(id)`, `getActiveRecord(sessionId)`.
 
-Migrates old `dcs_saved_cases` data: on first load, if old data exists, convert to new format
-and delete old key.
+**No migration** of old `dcs_saved_cases` data — old demo data has no long-term value.
+On first load, if the old key exists, delete it. The `/history` page must handle an empty
+record list gracefully (show "Chưa có bệnh án nào").
 
 ### 2.7 Message Sending Strategy
 
-Sending the full serialized record on every slash-command wastes tokens and creates giant
-chat bubbles. Instead:
+#### Backend context constraints (design rationale)
 
-| Event | What is sent | `command` field |
-|-------|-------------|-----------------|
-| Wizard submit (first time in session) | Full anonymized serialized text | `"benh-an-co-dinh"` or `"benh-an-thao-lap"` |
-| Wizard re-submit after edit ("Sửa") | Full anonymized serialized text (updated) | same |
-| `/chan-doan`, `/ke-hoach-dieu-tri`, etc. | `"Yêu cầu: [command label]"` (short string only) | command id |
-| Same command, but no record sent yet this session | Auto-redirect: toast + open `/benh-an-co-dinh` | — |
+The backend `ContextBuilder.build_context()` injects at most `_RECENT_HISTORY_LIMIT = 6`
+messages from session history into the LLM prompt. Older messages drop out entirely. The
+current user message is passed through un-truncated, but any prior message only survives
+in context for ~3 back-and-forth exchanges. A clinical record (2,500-5,000 chars serialized)
+would be lost from context after 3 turns if sent as a regular message.
 
-**Why this works:** The backend maintains session history. Once the full record is in the
-conversation, subsequent messages can reference it by instruction alone — the AI already
-has it in context.
+**Consequence:** The clinical record cannot be sent as a regular chat message and relied
+upon later. It must travel as a **dedicated context block** injected into every LLM call,
+separate from conversation history.
 
-**Chat bubble display:**
-- Record submission: compact bubble showing `"📋 Bệnh án Cố Định đã gửi"` with a
-  collapsible "Xem chi tiết" toggle (raw text hidden by default).
-- Analysis commands: normal user message bubble showing just the instruction text.
+#### Architecture: `clinical_context` field
+
+```ts
+// frontend/src/lib/types.ts
+export interface ChatRequest {
+  message: string;
+  mode: "chat" | "agent";
+  session_id?: string;
+  command?: string;              // slash-command id
+  clinical_context?: string;     // condensed clinical summary, ≤600 chars
+}
+```
+
+The frontend attaches `clinical_context` to **every** `/api/chat` request when an active
+clinical record exists — including free-form questions, slash-commands, and `/ket-thuc`.
+The backend `ContextBuilder` injects it as a separate `[BỐI CẢNH LÂM SÀNG]` block in the
+prompt, outside the 6-message history window, so it persists for the entire session.
+
+#### State machine (simplified)
+
+| Record state | User action | Behavior |
+|-------------|-------------|----------|
+| No record | Types `/chan-doan` etc. | Toast "Vui lòng tạo bệnh án trước" + open wizard type chooser (not hardcoded to Cố Định) |
+| No record | Types `/benh-an-*` | Open wizard |
+| Has record | Types `/chan-doan` etc. | Send `message: "Yêu cầu: [label]"` + `clinical_context` + `command` |
+| Has record | Free-form question | Send `message: "..."` + `clinical_context` (no `command`) |
+| Has record | Edits via badge "Sửa" | Reopen wizard → on submit, update localStorage, next request carries new `clinical_context` |
+
+No `sentRecords` tracking needed. No "already sent" vs "not yet sent" distinction. No
+`"⚠️ ĐÃ CẬP NHẬT"` prefix — the AI never sees two versions because `clinical_context`
+is always the current snapshot.
+
+#### Wizard submit behavior
+
+When the wizard submits, it **does not send a chat message**. It only:
+1. Saves the `ClinicalRecordData` to localStorage.
+2. Shows a confirmation bubble in the chat UI: `"📋 Bệnh án [Cố Định|Tháo Lắp] đã được lưu"`
+   (local-only, not sent to backend).
+3. Sets `activeClinicalRecord` in state.
+
+The record reaches the AI via `clinical_context` on the next actual message or command.
+
+#### `buildClinicalSummary()` — deterministic, not AI-generated
+
+File: `frontend/src/lib/clinical-record/summarize.ts`
+
+```ts
+buildClinicalSummary(schema: ClinicalRecordSchema, data: Record<string, unknown>): string
+```
+
+Produces a **deterministic** condensed summary (target ≤600 chars) included as
+`clinical_context`. Fields extracted, in priority order:
+
+1. **Răng liên quan (FDI):** all teeth with `condition !== "normal"` from `dental_chart`
+2. **Tuổi / Giới tính** (derived from `nam_sinh` + `gioi_tinh`)
+3. **Bệnh nền** (`benh_nen`)
+4. **Lý do khám** (`ly_do_kham`, truncate to 120 chars)
+5. **Chẩn đoán lâm sàng** (`chan_doan_lam_sang`, truncate to 200 chars)
+6. **Tình trạng nha chu** (`mo_nha_chu_chung`, truncate to 80 chars)
+7. For Tháo Lắp: **Phân loại Kennedy** (`kennedy_ham_tren_*`, `kennedy_ham_duoi_*`)
+
+Each field is truncated to its char budget. Total is capped at 600 chars. If over budget,
+trim from lowest-priority fields first. PII fields (`ho_ten`, `sdt`, `dia_chi`) are
+**never** included.
+
+Unit test requirement: `buildClinicalSummary()` output must be ≤600 chars for any input.
+
+#### Chat bubble display
+
+- Wizard submit: local-only bubble `"📋 Bệnh án Cố Định đã được lưu"` (not a real message).
+- Slash-commands: normal user message bubble showing just the instruction text.
+- Free-form questions: normal user message bubble. The `clinical_context` is invisible
+  in the UI — it's metadata on the request, not part of the displayed message.
 
 ---
 
@@ -502,7 +610,8 @@ frontend/src/lib/slash-commands/
 frontend/src/lib/clinical-record/
   types.ts
   schemas.ts         (both co-dinh and thao-lap schemas)
-  serialize.ts
+  serialize.ts       (full serialized text for localStorage)
+  summarize.ts       (deterministic ≤600 char summary for clinical_context)
   storage.ts
 
 frontend/src/components/chat/
@@ -521,16 +630,29 @@ frontend/src/components/clinical-record/
 
 ```
 frontend/src/components/chat/ChatInterface.tsx
-  — Add slash-command detection, wizard state, clinical record state, badge rendering
+  — Add slash-command detection, wizard state, clinical record state, badge rendering,
+    attach clinical_context to every outgoing ChatRequest
 
 frontend/src/app/page.tsx
   — Remove scenario cards and hero card, simplify to welcome + CTA
 
 frontend/src/app/history/page.tsx (if exists)
-  — Update to read from clinical-record/storage.ts
+  — Update to read from clinical-record/storage.ts, handle empty state
 
 frontend/src/lib/types.ts
-  — Update SavedCase type or add ClinicalRecordData re-export
+  — Add command + clinical_context to ChatRequest, add ClinicalRecordData re-export
+
+app/api/models.py (backend)
+  — Add optional command + clinical_context fields to ChatRequest Pydantic model
+
+memory/context_builder.py (backend)
+  — Pass clinical_context through build_context() return dict
+
+app/services/chat_mode.py, app/services/react_runner.py (backend)
+  — Read clinical_context from context dict, inject [BỐI CẢNH LÂM SÀNG] block in prompt
+
+agents/workflow/nodes/confirm_node.py, think_node.py, answer_node.py (backend)
+  — Read clinical_context from state context, inject block in prompt
 ```
 
 ### Deleted files
@@ -547,22 +669,53 @@ frontend/src/lib/case-storage.ts
 
 ## 6. Backend Impact
 
-**Minimal.** One additive change to `ChatRequest`:
+**Two additive fields** on `ChatRequest` and a small `ContextBuilder` change.
+
+### 6.1 ChatRequest changes
 
 ```ts
-// frontend/src/lib/types.ts  (existing ChatRequest)
+// frontend/src/lib/types.ts
 export interface ChatRequest {
   message: string;
   mode: "chat" | "agent";
   session_id?: string;
-  command?: string;   // NEW — slash-command id, e.g. "chan-doan"
+  command?: string;            // slash-command id, e.g. "chan-doan"
+  clinical_context?: string;   // deterministic summary ≤600 chars (see §2.7)
 }
 ```
 
-The backend `/api/chat` endpoint receives the same structured text messages as before.
-The new `command` field is optional and ignored by the current backend — it exists so the
-frontend can distinguish "clinical record submission" from "analysis request" without
-parsing message text, and so a future backend version can route on it explicitly.
+Both fields are optional. The backend Pydantic model (`api/models.py`) adds them with
+`default=None`. Existing clients that omit them are unaffected.
+
+### 6.2 ContextBuilder injection
+
+`ContextBuilder.build_context()` gains one line: if `clinical_context` is non-empty, include
+it in the returned dict under key `"clinical_context"`.
+
+Each prompt consumer (`ChatModeRunner._build_prompt`, `ReActRunner._build_step_prompt`,
+and the workflow nodes `confirm_node`, `think_node`, `answer_node`) reads
+`context.get("clinical_context", "")` and, if non-empty, inserts a block:
+
+```
+[BỐI CẢNH LÂM SÀNG]
+{clinical_context}
+```
+
+This block is placed **before** `[Lịch sử gần đây]` / `NGỮ CẢNH TRƯỚC` and is **not**
+counted toward the 6-message history window. It persists for the entire session as long
+as the frontend keeps sending it.
+
+### 6.3 Design constraints (documented for implementers)
+
+| Constant | Value | Location | Effect |
+|----------|-------|----------|--------|
+| `_RECENT_HISTORY_LIMIT` | 6 | `memory/context_builder.py:36` | Only last 6 messages enter the prompt |
+| `_MAX_CONTEXT_CHARS` | 2000 | `memory/context_builder.py:30` | Unused in production (`build_prompt_context` is test-only) |
+| Current user message | no limit | `api/chat.py` → runners | Passed as-is to LLM |
+
+**Why `clinical_context` must be a separate field:** A clinical record sent as a regular
+message drops out of the 6-message window after ~3 exchanges. As a dedicated context block
+it survives indefinitely.
 
 The `mode` field (chat/agent) continues to control which runner processes the request.
 The existing case study sub-agent (`case_analyst`) in the ADK framework continues to be
@@ -572,11 +725,31 @@ routed to by the root agent when the message contains clinical case content.
 
 ## 7. Testing Strategy
 
-- **Unit tests** (Vitest): Slash-command registry (register, search, getByCategory),
-  serialize function (both schemas), storage CRUD, field validation logic.
-- **Component tests** (Vitest + Testing Library): SlashCommandMenu keyboard navigation
-  and filtering, WizardField rendering for each FieldType, DentalChart click + popover
-  + status assignment, ClinicalRecordBadge expand/collapse.
-- **Integration tests**: Full wizard flow (fill all steps → submit → verify serialized output),
-  slash-command → wizard → send message → verify chat receives correct text.
+- **Unit tests** (Vitest):
+  - Slash-command registry: register, search, getByCategory.
+  - **Diacritics-insensitive search:** `"chan doan"` matches `"chẩn đoán"`, `"ke hoach"`
+    matches `"kế hoạch"`, `"d"` matches `"đ"`.
+  - Serialize function (both schemas): PII fields stripped, age derived correctly.
+  - **Phone scrubbing:** `"0901234567"` → `"[SĐT]"`, `"090 123 4567"` → `"[SĐT]"`,
+    `"090.123.4567"` → `"[SĐT]"`, `"+84901234567"` → `"[SĐT]"`, `"12345"` left alone.
+  - **`buildClinicalSummary` output ≤600 chars** for max-length inputs (all fields filled
+    to their limits). Also verify PII never appears in output.
+  - Storage CRUD, old key cleanup (`dcs_saved_cases` deleted on first load).
+  - Field validation: `nam_sinh` rejects `"abc"`, `"1800"`, `"2030"` (assuming 2026);
+    accepts `"1990"`, `"2026"`.
+  - Wizard draft autosave/restore cycle.
+- **Component tests** (Vitest + Testing Library):
+  - SlashCommandMenu keyboard navigation and filtering.
+  - **IME guard:** simulated `isComposing=true` event does not trigger Enter-to-select.
+  - WizardField rendering for each FieldType (including `radio-with-other`, `select-with-text`).
+  - DentalChart click + popover + status assignment. **Mobile layout:** renders two rows
+    on viewport ≤ 640px. **Accessibility:** each status shows a letter indicator alongside
+    the color.
+  - ClinicalRecordBadge expand/collapse.
+  - Wizard cancel confirmation dialog when data exists.
+- **Integration tests**: Full wizard flow (fill all steps → submit → verify localStorage
+  saved, no chat message sent), slash-command → send message → verify `clinical_context`
+  attached to request.
+- **Backend tests** (pytest): `ContextBuilder.build_context()` includes `clinical_context`
+  when provided; prompt consumers inject `[BỐI CẢNH LÂM SÀNG]` block correctly.
 - **Manual verification**: Dev server testing of the complete user flow in browser.
