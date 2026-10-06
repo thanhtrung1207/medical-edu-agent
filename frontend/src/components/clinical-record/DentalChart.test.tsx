@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { DentalChart } from "./DentalChart";
 import type { ToothStatus } from "@/lib/clinical-record/types";
@@ -25,36 +26,39 @@ describe("DentalChart", () => {
       .toEqual(["Răng 48", "Răng 47", "Răng 46", "Răng 45", "Răng 44", "Răng 43", "Răng 42", "Răng 41", "Răng 31", "Răng 32", "Răng 33", "Răng 34", "Răng 35", "Răng 36", "Răng 37", "Răng 38"]);
   });
 
-  it("opens the tooth popover with six Vietnamese statuses and closes it with Xong", () => {
+  it("closes the non-modal popover with Escape and restores focus to its tooth", () => {
     render(<DentalChart value={{}} onChange={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Răng 16" }));
-    expect(screen.getByRole("dialog", { name: "Răng 16" })).toBeTruthy();
+    const tooth = screen.getByRole("button", { name: "Răng 16" });
+    tooth.focus();
+    fireEvent.click(tooth);
+
+    const dialog = screen.getByRole("dialog", { name: "Răng 16" });
+    expect(dialog.getAttribute("aria-modal")).toBeNull();
     expect(screen.getByRole("button", { name: /Bình thường/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Sâu/ }).textContent).toContain("S");
     expect(screen.getByRole("button", { name: /Mất/ }).textContent).toContain("M");
     expect(screen.getByLabelText("Ghi chú răng 16")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Xong" }));
+    fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(tooth);
   });
 
-  it("merges a selected tooth condition and its note into onChange", () => {
-    const onChange = vi.fn();
-    render(<DentalChart value={statuses} onChange={onChange} />);
+  it("preserves a newly selected condition when the controlled value updates before editing its note", () => {
+    function ControlledChart() {
+      const [value, setValue] = useState(statuses);
+      return <DentalChart value={value} onChange={setValue} />;
+    }
+
+    render(<ControlledChart />);
 
     fireEvent.click(screen.getByRole("button", { name: "Răng 16" }));
     fireEvent.click(screen.getByRole("button", { name: /Phục hình/ }));
-    expect(onChange).toHaveBeenLastCalledWith({
-      ...statuses,
-      16: { condition: "restored", note: "Mặt nhai" },
-    });
-
     fireEvent.change(screen.getByLabelText("Ghi chú răng 16"), { target: { value: "Mão sứ" } });
-    expect(onChange).toHaveBeenLastCalledWith({
-      ...statuses,
-      16: { condition: "decay", note: "Mão sứ" },
-    });
+
+    expect(screen.getByRole("button", { name: /Phục hình/ }).getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByLabelText("Ghi chú răng 16") as HTMLInputElement).value).toBe("Mão sứ");
   });
 
   it("marks annotated teeth and summarizes their Vietnamese status", () => {
@@ -65,6 +69,19 @@ describe("DentalChart", () => {
     expect(screen.getByText("Răng 16: Sâu")).toBeTruthy();
     expect(screen.getByText("Răng 24: Mất")).toBeTruthy();
     expect(container.querySelector('[aria-label="Răng 18"]')?.getAttribute("data-status")).toBeNull();
+  });
+
+  it("closes an active popover when disabled, and keeps it closed after re-enabling", () => {
+    const { rerender } = render(<DentalChart value={{}} onChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Răng 16" }));
+    expect(screen.getByRole("dialog", { name: "Răng 16" })).toBeTruthy();
+
+    rerender(<DentalChart value={{}} onChange={vi.fn()} disabled />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    rerender(<DentalChart value={{}} onChange={vi.fn()} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("does not open a popover for disabled teeth", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ToothStatus } from "@/lib/clinical-record/types";
 import { TOOTH_CONDITIONS, ToothPopover } from "./ToothPopover";
 
@@ -24,9 +24,10 @@ interface JawRowProps {
   value: Record<number, ToothStatus>;
   disabled: boolean;
   onSelect: (tooth: number) => void;
+  onButtonRef: (tooth: number, button: HTMLButtonElement | null) => void;
 }
 
-function JawRow({ jaw, teeth, value, disabled, onSelect }: JawRowProps) {
+function JawRow({ jaw, teeth, value, disabled, onSelect, onButtonRef }: JawRowProps) {
   return (
     <div data-jaw-row={jaw} className="overflow-x-auto">
       <div className="flex min-w-max gap-1 p-1">
@@ -37,6 +38,7 @@ function JawRow({ jaw, teeth, value, disabled, onSelect }: JawRowProps) {
           return (
             <button
               key={tooth}
+              ref={(button) => onButtonRef(tooth, button)}
               type="button"
               aria-label={`Răng ${tooth}`}
               data-status={isAnnotated ? status.condition : undefined}
@@ -64,7 +66,17 @@ function JawRow({ jaw, teeth, value, disabled, onSelect }: JawRowProps) {
 
 export function DentalChart({ value, onChange, disabled = false }: DentalChartProps) {
   const [activeTooth, setActiveTooth] = useState<number | null>(null);
+  const toothButtons = useRef<Record<number, HTMLButtonElement | null>>({});
   const activeStatus = activeTooth === null ? NORMAL_STATUS : value[activeTooth] ?? NORMAL_STATUS;
+
+  useEffect(() => {
+    if (disabled) setActiveTooth(null);
+  }, [disabled]);
+
+  const closePopover = () => {
+    if (activeTooth !== null) toothButtons.current[activeTooth]?.focus();
+    setActiveTooth(null);
+  };
   const annotatedTeeth = Object.entries(value)
     .map(([tooth, status]) => [Number(tooth), status] as const)
     .filter(([, status]) => status.condition !== "normal")
@@ -82,11 +94,25 @@ export function DentalChart({ value, onChange, disabled = false }: DentalChartPr
     <section className="space-y-3" aria-label="Sơ đồ răng">
       <div className="space-y-1">
         <span className="text-xs font-semibold text-slate-500">Hàm trên</span>
-        <JawRow jaw="upper" teeth={UPPER_TEETH} value={value} disabled={disabled} onSelect={setActiveTooth} />
+        <JawRow
+          jaw="upper"
+          teeth={UPPER_TEETH}
+          value={value}
+          disabled={disabled}
+          onSelect={setActiveTooth}
+          onButtonRef={(tooth, button) => { toothButtons.current[tooth] = button; }}
+        />
       </div>
       <div className="space-y-1">
         <span className="text-xs font-semibold text-slate-500">Hàm dưới</span>
-        <JawRow jaw="lower" teeth={LOWER_TEETH} value={value} disabled={disabled} onSelect={setActiveTooth} />
+        <JawRow
+          jaw="lower"
+          teeth={LOWER_TEETH}
+          value={value}
+          disabled={disabled}
+          onSelect={setActiveTooth}
+          onButtonRef={(tooth, button) => { toothButtons.current[tooth] = button; }}
+        />
       </div>
 
       {activeTooth !== null && !disabled && (
@@ -95,7 +121,7 @@ export function DentalChart({ value, onChange, disabled = false }: DentalChartPr
           status={activeStatus}
           onStatusChange={(condition) => updateActiveTooth({ condition })}
           onNoteChange={(note) => updateActiveTooth({ note })}
-          onClose={() => setActiveTooth(null)}
+          onClose={closePopover}
         />
       )}
 
