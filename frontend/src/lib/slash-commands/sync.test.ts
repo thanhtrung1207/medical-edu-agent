@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import "@/lib/slash-commands/commands";
 import { commandRegistry } from "@/lib/slash-commands/registry";
 
+// Frontend contract mirror; Task 9 backend validation must match it, not a runtime integration test.
 const BACKEND_WHITELIST = new Set([
   "chan-doan",
   "ke-hoach-dieu-tri",
