@@ -29,7 +29,7 @@ export class CommandRegistry {
       return this.getAll();
     }
 
-    const normalizedQuery = normalize(query);
+    const normalizedQuery = normalize(query.trim());
 
     return this.getAll().filter((command) =>
       normalize(`${command.id} ${command.label}`).includes(normalizedQuery),

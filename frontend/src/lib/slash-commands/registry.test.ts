@@ -61,6 +61,12 @@ describe("CommandRegistry", () => {
       );
     });
 
+    it("trims nonblank queries before normalizing", () => {
+      expect(registry.search("  chan doan  ").map((command) => command.id)).toContain(
+        "chan-doan",
+      );
+    });
+
     it("normalizes lowercase and uppercase Vietnamese d-strokes", () => {
       expect(registry.search("dac").map((command) => command.id)).toContain("đặc-biệt");
       expect(registry.search("DAC").map((command) => command.id)).toContain("đặc-biệt");
