@@ -40,6 +40,28 @@ describe("clinical-record storage", () => {
     expect(listClinicalRecords()).toHaveLength(2);
   });
 
+  it.each(["null", "{}", '"not an array"'])(
+    "returns an empty list when stored JSON is %s",
+    (storedValue) => {
+      localStorage.setItem("unident_clinical_records", storedValue);
+      expect(listClinicalRecords()).toEqual([]);
+    },
+  );
+
+  it("replaces an existing record when saving the same id", () => {
+    const record = makeRecord();
+    saveClinicalRecord(record);
+
+    const replacement = {
+      ...record,
+      serializedText: "Updated record",
+      updatedAt: "2026-10-07T00:00:00Z",
+    };
+    saveClinicalRecord(replacement);
+
+    expect(listClinicalRecords()).toEqual([replacement]);
+  });
+
   it("deletes a record", () => {
     const record = makeRecord();
     saveClinicalRecord(record);

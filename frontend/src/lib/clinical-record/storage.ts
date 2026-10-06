@@ -10,7 +10,8 @@ function readAll(): ClinicalRecordData[] {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return [];
   try {
-    return JSON.parse(raw) as ClinicalRecordData[];
+    const records = JSON.parse(raw);
+    return Array.isArray(records) ? records : [];
   } catch {
     return [];
   }
