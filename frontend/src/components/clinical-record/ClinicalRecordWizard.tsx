@@ -63,7 +63,10 @@ export function validateStep(
       if (field.type === "multi-checkbox") {
         isEmpty = !Array.isArray(value) || (value as unknown[]).length === 0;
       } else {
-        isEmpty = value === undefined || value === null || value === "";
+        isEmpty =
+          value === undefined ||
+          value === null ||
+          (typeof value === "string" ? value.trim() === "" : value === "");
       }
       if (isEmpty) {
         errors[field.id] = "Trường này bắt buộc";

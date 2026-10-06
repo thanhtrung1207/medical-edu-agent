@@ -170,6 +170,11 @@ describe("validateStep – year 1900–now (nam_sinh)", () => {
     const errs = validateStep(step0, { nam_sinh: cur, gioi_tinh: "Nam" });
     expect(errs["nam_sinh"]).toBeUndefined();
   });
+
+  it("rejects whitespace-only nam_sinh as required", () => {
+    const errs = validateStep(step0, { nam_sinh: "   ", gioi_tinh: "Nam" });
+    expect(errs["nam_sinh"]).toBe("Trường này bắt buộc");
+  });
 });
 
 // ── Learning banner ───────────────────────────────────────────────────────────
