@@ -101,3 +101,15 @@ export interface SavedCase {
 }
 
 export type ChatMode = "chat" | "agent";
+
+export interface ChatRequest {
+  message: string;
+  mode: "chat" | "agent";
+  user_id: string;
+  session_id?: string;
+  stream?: boolean;
+  command?: string;
+  clinical_context?: string;
+}
+
+export type { ClinicalRecordData, ToothStatus } from "./clinical-record/types";

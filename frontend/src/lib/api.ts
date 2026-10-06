@@ -69,6 +69,8 @@ export async function sendMessage(
   userId: string,
   sessionId?: string,
   mode?: ChatMode,
+  command?: string,
+  clinicalContext?: string,
 ): Promise<AssistantReply> {
   if (USE_MOCK_API) return buildMockReply(message);
 
@@ -80,6 +82,8 @@ export async function sendMessage(
       user_id: userId,
       ...(sessionId ? { session_id: sessionId } : {}),
       ...(mode ? { mode } : {}),
+      ...(command ? { command } : {}),
+      ...(clinicalContext ? { clinical_context: clinicalContext } : {}),
     }),
   });
   if (!res.ok) throw new Error(`Chat request failed: ${res.status}`);
