@@ -86,8 +86,13 @@ describe("SlashCommandMenu", () => {
     it("calls commandRegistry.search with the query prop", () => {
       mockSearch.mockReturnValue([]);
       render(<SlashCommandMenu query="benh" onSelect={vi.fn()} onClose={vi.fn()} />);
-
       expect(mockSearch).toHaveBeenCalledWith("benh");
+    });
+
+    it("calls commandRegistry.search with empty string for empty query", () => {
+      mockSearch.mockReturnValue([CMD_CASE]);
+      render(<SlashCommandMenu query="" onSelect={vi.fn()} onClose={vi.fn()} />);
+      expect(mockSearch).toHaveBeenCalledWith("");
     });
 
     it("omits a category heading when that category yields no results", () => {
