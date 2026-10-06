@@ -459,12 +459,19 @@ first chat message exists (wizard submit happens before any `/api/chat` call), s
 no `sessionId` at creation time. `sessionId` is assigned lazily: on the first `/api/chat`
 response that returns a `session_id`, the frontend writes it back to the active record via
 `saveClinicalRecord()`. This links the record to the chat session for `/history` display.
-New chat sessions do **not** inherit unclosed records from other sessions — the user must
-explicitly select `/benh-an-*` again or edit via the badge.
+
+**Cross-session inheritance:** If the user closes the browser and returns later, the
+unclosed record is still active — `getActiveRecord()` will return it. This is intentional:
+students may work on a case across multiple sessions. To start fresh without the old
+record, they use `/benh-an-*` (which closes the old record) or `/ket-thuc`.
 
 `closeRecord(id, summary)` sets `summary` and `closedAt` on the record. Called by
-`/ket-thuc` after successfully receiving an AI summary. A record with `closedAt` is
-considered closed — the badge shows "Đã kết thúc" and "Sửa" is hidden.
+`/ket-thuc` after successfully receiving an AI summary. Also called without summary
+(pass `null`) when the user replaces a record via `/benh-an-*`. Display rules:
+- `closedAt` set + `summary` present → badge shows "Đã kết thúc", `/history` shows summary.
+- `closedAt` set + `summary` absent → badge shows "Đã lưu — chưa tóm tắt", `/history`
+  shows "Chưa có tóm tắt" placeholder.
+- `closedAt` absent → record is active, badge shows "Sửa" button.
 
 **No migration** of old `dcs_saved_cases` data — old demo data has no long-term value.
 On first load, if the old key exists, delete it. The `/history` page must handle an empty
@@ -693,7 +700,7 @@ Rendered above the message list inside `ChatInterface` when `activeClinicalRecor
   diagnosis — read-only).
 - "Sửa": reopen the wizard with `initialData` pre-filled, allowing edits at any step.
   **Hidden** when the record is closed (`closedAt` set). Closed records show
-  "Đã kết thúc" label instead.
+  "Đã kết thúc" (with summary) or "Đã lưu — chưa tóm tắt" (without summary) instead.
 
 ---
 
@@ -938,5 +945,12 @@ The backend Pydantic model adds validation for the two new fields:
   - `clinical_context` validation: string exceeding 2000 chars → 422.
 - **Manual verification**:
   - Dev server testing of the complete user flow in browser.
-  - In agent mode, send `/chan-doan` with a clinical record and verify the response comes
+  - **Agent mode:** send `/chan-doan` with a clinical record and verify the response comes
     from `case_analyst` (check for Socratic questioning style, clinical analysis depth).
+  - **Chat mode:** send `/chan-doan` and `/ket-thuc` with a clinical record. Verify
+    `/chan-doan` returns a useful clinical response (no sub-agent routing, but clinical
+    context is present). Verify `/ket-thuc` returns a clean summary that the frontend can
+    extract as the last assistant message (no follow-up questions, no markdown artifacts
+    that break display).
+  - **Cross-session:** create a record, close the browser, reopen. Verify the badge shows
+    the unclosed record and `clinical_context` is attached to the next message.
