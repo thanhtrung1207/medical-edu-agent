@@ -99,6 +99,15 @@ describe("ClinicalRecordBadge", () => {
 
       expect(screen.getByRole("button", { name: "Xem" })).toBeInTheDocument();
     });
+
+    it("shows serializedText content after clicking Xem (I-5)", () => {
+      render(<ClinicalRecordBadge record={baseRecord} />);
+      fireEvent.click(screen.getByRole("button", { name: "Xem" }));
+
+      expect(
+        screen.getByText(baseRecord.serializedText as string),
+      ).toBeInTheDocument();
+    });
   });
 
   // -- Sửa button ------------------------------------------------------------

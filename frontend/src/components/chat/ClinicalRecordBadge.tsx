@@ -103,6 +103,7 @@ export function ClinicalRecordBadge({ record, onEdit }: ClinicalRecordBadgeProps
 
           <button
             type="button"
+            aria-expanded={expanded}
             onClick={() => setExpanded((v) => !v)}
             className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-700"
           >

@@ -1,7 +1,13 @@
 "use client";
 
 import * as React from "react";
-import * as Icons from "lucide-react";
+import {
+  ClipboardPlus,
+  CheckCircle,
+  GitCompare,
+  ListChecks,
+  Stethoscope,
+} from "lucide-react";
 
 import { commandRegistry } from "@/lib/slash-commands/registry";
 import type { SlashCommand } from "@/lib/slash-commands/types";
@@ -16,6 +22,19 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORY_ORDER = ["case", "analysis"] as const;
+
+/**
+ * Static map of the icon names used by the command registry.
+ * Replaces the previous `import * as Icons from "lucide-react"` wildcard so
+ * bundlers can tree-shake the rest of the icon library (I-2).
+ */
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  ClipboardPlus,
+  CheckCircle,
+  GitCompare,
+  ListChecks,
+  Stethoscope,
+};
 
 // ---------------------------------------------------------------------------
 // Props
@@ -64,6 +83,24 @@ export function SlashCommandMenu({
     },
     [],
   );
+
+  // Refs for each navigable menu-item button (indexed by navigableCommands position).
+  // Used for programmatic DOM focus when keyboard navigation changes focusedIndex (C-2).
+  const itemRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
+
+  // Tracks whether the component has mounted; we skip the very first focus call
+  // so the menu does not steal focus from the input on open.
+  const hasMountedRef = React.useRef(false);
+
+  // Programmatic focus — fires after every focusedIndex change caused by keyboard
+  // navigation (C-2 / correct focus-management pattern for role="menu").
+  React.useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+    itemRefs.current[focusedIndex]?.focus();
+  }, [focusedIndex]);
 
   // Keep navigable list and callbacks in refs so the keydown handler (mounted
   // once) always reads the latest values without needing to re-register.
@@ -130,14 +167,9 @@ export function SlashCommandMenu({
           {CATEGORY_LABELS[category]}
         </div>
 
-        {/* Command items */}
+        {/* Command items — role="menuitem" (C-1) with programmatic focus (C-2) */}
         {commands.map((cmd) => {
-          const IconComp = (
-            Icons as unknown as Record<
-              string,
-              React.ComponentType<{ className?: string }>
-            >
-          )[cmd.icon];
+          const IconComp = ICON_MAP[cmd.icon];
 
           const disabled = isDisabled(cmd);
           const navIdx = navigableCommands.indexOf(cmd);
@@ -147,10 +179,15 @@ export function SlashCommandMenu({
             <button
               key={cmd.id}
               type="button"
-              disabled={disabled}
-              aria-selected={isFocused}
+              role="menuitem"
+              tabIndex={-1}
+              aria-disabled={disabled}
+              aria-current={isFocused ? "true" : undefined}
+              ref={(el) => {
+                if (!disabled) itemRefs.current[navIdx] = el;
+              }}
               onClick={() => {
-                // Guard for jsdom (which fires click on disabled buttons).
+                // Guard for jsdom (which fires click on aria-disabled buttons).
                 if (!disabled) onSelect(cmd);
               }}
               className={[
@@ -187,15 +224,28 @@ export function SlashCommandMenu({
 
   return (
     <div
-      role="listbox"
+      role="menu"
       aria-label="Slash commands"
       className="absolute z-50 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
     >
-      {CATEGORY_ORDER.map((cat) =>
-        renderGroup(
-          allCommands.filter((c) => c.category === cat),
-          cat,
-        ),
+      {allCommands.length === 0 ? (
+        /* Empty-state row (I-3) */
+        <ul role="none">
+          <li
+            role="menuitem"
+            aria-disabled="true"
+            className="px-3 py-2 text-sm text-slate-400 dark:text-slate-500"
+          >
+            Không có lệnh nào phù hợp.
+          </li>
+        </ul>
+      ) : (
+        CATEGORY_ORDER.map((cat) =>
+          renderGroup(
+            allCommands.filter((c) => c.category === cat),
+            cat,
+          ),
+        )
       )}
     </div>
   );

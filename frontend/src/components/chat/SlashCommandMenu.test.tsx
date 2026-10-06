@@ -134,7 +134,7 @@ describe("SlashCommandMenu", () => {
       const onSelect = vi.fn();
       render(<SlashCommandMenu query="" onSelect={onSelect} onClose={vi.fn()} />);
 
-      fireEvent.click(screen.getByRole("button", { name: /Bệnh án Cố Định/ }));
+      fireEvent.click(screen.getByRole("menuitem", { name: /Bệnh án Cố Định/ }));
 
       expect(onSelect).toHaveBeenCalledWith(CMD_CASE);
     });
@@ -151,7 +151,7 @@ describe("SlashCommandMenu", () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole("button", { name: /Bệnh án Cố Định/ }));
+      fireEvent.click(screen.getByRole("menuitem", { name: /Bệnh án Cố Định/ }));
 
       expect(onSelect).not.toHaveBeenCalled();
     });
@@ -239,6 +239,27 @@ describe("SlashCommandMenu", () => {
       );
 
       expect(onClose).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -- Focus / aria-current (I-4) -------------------------------------------
+
+  describe("focus management", () => {
+    it("focused item receives aria-current=true after ArrowDown", () => {
+      mockSearch.mockReturnValue([CMD_CASE, CMD_ANALYSIS]);
+      render(<SlashCommandMenu query="" onSelect={vi.fn()} onClose={vi.fn()} />);
+
+      act(() => {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+        );
+      });
+
+      // After ArrowDown the second navigable item (CMD_ANALYSIS) should be focused
+      const analysisItem = screen.getByRole("menuitem", {
+        name: /Phân tích chẩn đoán/,
+      });
+      expect(analysisItem).toHaveAttribute("aria-current", "true");
     });
   });
 
