@@ -3,6 +3,9 @@ import type { ClinicalRecordData } from "./types";
 const STORAGE_KEY = "unident_clinical_records";
 const OLD_KEY = "dcs_saved_cases";
 
+// Retains changes for this browser session until localStorage can be read and written again.
+let fallbackRecords: ClinicalRecordData[] | undefined;
+
 function isRecordData(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -26,6 +29,12 @@ function isClinicalRecordData(value: unknown): value is ClinicalRecordData {
 }
 
 function readAll(): ClinicalRecordData[] {
+  if (fallbackRecords) {
+    const records = fallbackRecords;
+    writeAll(records);
+    return records;
+  }
+
   try {
     if (localStorage.getItem(OLD_KEY)) {
       try {
@@ -45,10 +54,17 @@ function readAll(): ClinicalRecordData[] {
 }
 
 function writeAll(records: ClinicalRecordData[]): void {
+  fallbackRecords = records;
+
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    const serializedRecords = JSON.stringify(records);
+    localStorage.setItem(STORAGE_KEY, serializedRecords);
+
+    if (localStorage.getItem(STORAGE_KEY) === serializedRecords) {
+      fallbackRecords = undefined;
+    }
   } catch {
-    // Storage may be unavailable or full; callers continue with in-memory results.
+    // Retain records in memory until localStorage can be read and written again.
   }
 }
 

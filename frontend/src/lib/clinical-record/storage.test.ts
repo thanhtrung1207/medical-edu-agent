@@ -29,6 +29,8 @@ describe("clinical-record storage", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    listClinicalRecords();
+    localStorage.clear();
   });
 
   it("saves and retrieves a record", () => {
@@ -176,6 +178,39 @@ describe("clinical-record storage", () => {
     expect(() => saveClinicalRecord(makeRecord())).not.toThrow();
     expect(() => deleteClinicalRecord(record.id)).not.toThrow();
     expect(() => closeRecord(record.id, null)).not.toThrow();
+  });
+
+  it("retains CRUD changes in memory when localStorage reads and writes fail", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("Storage unavailable");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Storage unavailable");
+    });
+    const record = makeRecord();
+
+    saveClinicalRecord(record);
+
+    expect(getClinicalRecord(record.id)).toEqual(record);
+    expect(listClinicalRecords()).toEqual([record]);
+    expect(getActiveRecord()).toEqual(record);
+
+    closeRecord(record.id, "Tóm tắt bệnh án");
+    expect(getClinicalRecord(record.id)).toMatchObject({
+      ...record,
+      summary: "Tóm tắt bệnh án",
+    });
+    expect(getActiveRecord()).toBeUndefined();
+
+    deleteClinicalRecord(record.id);
+    expect(getClinicalRecord(record.id)).toBeUndefined();
+    expect(listClinicalRecords()).toEqual([]);
+
+    saveClinicalRecord(record);
+    vi.restoreAllMocks();
+    expect(listClinicalRecords()).toEqual([record]);
+    localStorage.clear();
+    expect(listClinicalRecords()).toEqual([]);
   });
 
   it("deletes old dcs_saved_cases key on first load", () => {
