@@ -73,6 +73,16 @@ export function DentalChart({ value, onChange, disabled = false }: DentalChartPr
     if (disabled) setActiveTooth(null);
   }, [disabled]);
 
+  useEffect(() => {
+    if (activeTooth === null) return;
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") closePopover();
+    }
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTooth]);
+
   const closePopover = () => {
     if (activeTooth !== null) toothButtons.current[activeTooth]?.focus();
     setActiveTooth(null);

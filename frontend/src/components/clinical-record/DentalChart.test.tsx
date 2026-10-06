@@ -40,7 +40,8 @@ describe("DentalChart", () => {
     expect(screen.getByRole("button", { name: /Mất/ }).textContent).toContain("M");
     expect(screen.getByLabelText("Ghi chú răng 16")).toBeTruthy();
 
-    fireEvent.keyDown(dialog, { key: "Escape" });
+    // Focus stays on the trigger; Escape should close from document level
+    fireEvent.keyDown(tooth, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(tooth);
   });

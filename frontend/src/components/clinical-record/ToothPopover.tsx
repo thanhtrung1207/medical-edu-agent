@@ -34,9 +34,6 @@ export function ToothPopover({
     <div
       role="dialog"
       aria-label={`Răng ${tooth}`}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
-      }}
       className="rounded-lg border border-borderSoft bg-white p-3 shadow-lg"
     >
       <div className="mb-3 flex items-center justify-between">
