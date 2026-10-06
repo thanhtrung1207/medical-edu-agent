@@ -249,6 +249,7 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
             type="text"
             value={otherText}
             placeholder={field.pairedTextLabel ?? "Ghi rõ..."}
+            aria-label={field.pairedTextLabel ?? "Ghi rõ..."}
             onChange={(e) =>
               onChange(field.id, { value: selectedValue, text: e.target.value })
             }
@@ -271,6 +272,9 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
             value={parsed.value}
             onChange={(e) => onChange(field.id, { value: e.target.value, text: parsed.text })}
             className={`${inputClass} flex-1`}
+            required={field.required}
+            aria-invalid={error ? "true" : undefined}
+            aria-describedby={error ? errorId : undefined}
           >
             <option value="">-- Chọn --</option>
             {field.options?.map((opt) => (
@@ -286,6 +290,7 @@ function WizardFieldComponent({ field, value, onChange, error }: WizardFieldProp
             aria-label={field.pairedTextLabel ?? "Ghi chú..."}
             onChange={(e) => onChange(field.id, { value: parsed.value, text: e.target.value })}
             className={`${inputClass} flex-1`}
+            required={field.required}
           />
         </div>
         {errorEl}

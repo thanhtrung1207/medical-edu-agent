@@ -380,6 +380,137 @@ describe("WizardField – select-with-text aria-label (I-4)", () => {
   });
 });
 
+// ── N-1: select-with-text inner select a11y attrs ────────────────────────────
+
+describe("WizardField – select-with-text select a11y (N-1)", () => {
+  const field = mkField({
+    type: "select-with-text",
+    options: [{ value: "A", label: "A" }],
+  });
+
+  it("inner select has required attribute when field.required is true", () => {
+    render(
+      <WizardField
+        field={mkField({ type: "select-with-text", required: true, options: [] })}
+        value={{ value: "", text: "" }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect((screen.getByRole("combobox") as HTMLSelectElement).required).toBe(true);
+  });
+
+  it("inner select has aria-invalid='true' when error is given", () => {
+    render(
+      <WizardField field={field} value={{ value: "", text: "" }} onChange={vi.fn()} error="Error" />,
+    );
+    expect(screen.getByRole("combobox").getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("inner select has aria-describedby pointing to error element when error given", () => {
+    render(
+      <WizardField
+        field={field}
+        value={{ value: "", text: "" }}
+        onChange={vi.fn()}
+        error="Error msg"
+      />,
+    );
+    const sel = screen.getByRole("combobox");
+    const describedById = sel.getAttribute("aria-describedby");
+    expect(describedById).toBeTruthy();
+    expect(document.getElementById(describedById!)?.textContent).toBe("Error msg");
+  });
+
+  it("inner select has no aria-invalid when no error", () => {
+    render(
+      <WizardField field={field} value={{ value: "", text: "" }} onChange={vi.fn()} />,
+    );
+    expect(screen.getByRole("combobox").getAttribute("aria-invalid")).toBeNull();
+  });
+});
+
+// ── N-2: radio-with-other free-text aria-label ────────────────────────────────
+
+describe("WizardField – radio-with-other free-text aria-label (N-2)", () => {
+  it("free-text input has aria-label matching pairedTextLabel", () => {
+    const field = mkField({
+      type: "radio-with-other",
+      options: [{ value: "Khác", label: "Khác" }],
+      pairedTextLabel: "Lý do",
+    });
+    render(<WizardField field={field} value="Khác" onChange={vi.fn()} />);
+    expect(screen.getByRole("textbox").getAttribute("aria-label")).toBe("Lý do");
+  });
+
+  it("free-text input defaults aria-label to 'Ghi rõ...' when pairedTextLabel absent", () => {
+    const field = mkField({
+      type: "radio-with-other",
+      options: [{ value: "Khác", label: "Khác" }],
+    });
+    render(<WizardField field={field} value="Khác" onChange={vi.fn()} />);
+    expect(screen.getByRole("textbox").getAttribute("aria-label")).toBe("Ghi rõ...");
+  });
+});
+
+// ── N-3: select-with-text paired text required ────────────────────────────────
+
+describe("WizardField – select-with-text paired text required (N-3)", () => {
+  it("paired text input has required attribute when field.required is true", () => {
+    render(
+      <WizardField
+        field={mkField({ type: "select-with-text", required: true, options: [] })}
+        value={{ value: "", text: "" }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect((screen.getByRole("textbox") as HTMLInputElement).required).toBe(true);
+  });
+});
+
+// ── N-4: visibilityKey excludes own field value ───────────────────────────────
+
+describe("WizardStepRenderer – visibilityKey excludes own field value (N-4)", () => {
+  it("does NOT call onChange again when only data[f.id] changes while field stays hidden", () => {
+    const onChange = vi.fn();
+    const hiddenStep = {
+      id: "s",
+      label: "S",
+      shortLabel: "S",
+      fields: [
+        { id: "name", label: "Name", type: "text" as const },
+        {
+          id: "detail",
+          label: "Detail",
+          type: "text" as const,
+          visibleWhen: { fieldId: "name", notEquals: "skip" },
+        },
+      ],
+    };
+    // Initial render: detail is hidden (name="skip"), detail has a non-empty value
+    const { rerender } = render(
+      <WizardStepRenderer
+        step={hiddenStep}
+        data={{ name: "skip", detail: "initial value" }}
+        onChange={onChange}
+      />,
+    );
+    // Effect fires once and clears detail
+    onChange.mockClear();
+
+    // Rerender: only data["detail"] changes while name stays "skip" → field remains hidden
+    // With CURRENT (buggy) code: visibilityKey changes → effect fires → onChange called (spurious)
+    // With FIXED code: visibilityKey unchanged → effect does NOT fire → onChange NOT called
+    rerender(
+      <WizardStepRenderer
+        step={hiddenStep}
+        data={{ name: "skip", detail: "new value" }}
+        onChange={onChange}
+      />,
+    );
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
 // ── I-5: required and aria-invalid / aria-describedby ────────────────────────
 
 describe("WizardField – required and aria-invalid (I-5)", () => {

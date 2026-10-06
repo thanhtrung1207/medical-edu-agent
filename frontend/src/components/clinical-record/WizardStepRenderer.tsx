@@ -24,12 +24,7 @@ export function WizardStepRenderer({
   const visibilityKey = JSON.stringify(
     step.fields
       .filter((f) => f.visibleWhen)
-      .flatMap((f) => [
-        f.id,
-        data[f.id],
-        f.visibleWhen!.fieldId,
-        data[f.visibleWhen!.fieldId],
-      ]),
+      .flatMap((f) => [f.visibleWhen!.fieldId, data[f.visibleWhen!.fieldId]]),
   );
 
   // Refs keep the latest data/onChange available inside the effect without them
