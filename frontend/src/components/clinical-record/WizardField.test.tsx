@@ -291,6 +291,37 @@ describe("WizardStepRenderer", () => {
     expect(grid).toBeTruthy();
   });
 
+  it("renders a half-width field without the full-width col-span-2 class", () => {
+    const halfStep = {
+      id: "half-step",
+      label: "Half Step",
+      shortLabel: "HS",
+      fields: [{ id: "a", label: "A Field", type: "text" as const, half: true }],
+    };
+    const { container } = render(
+      <WizardStepRenderer step={halfStep} data={{ a: "" }} onChange={vi.fn()} />,
+    );
+    const input = container.querySelector("input");
+    expect(input).toBeTruthy();
+    const wrapper = input!.parentElement;
+    expect(wrapper?.className).not.toMatch(/col-span-2/);
+  });
+
+  it("renders dental-chart with full-width col-span-2 class even when half is true", () => {
+    const chartStep = {
+      id: "chart-step",
+      label: "Chart Step",
+      shortLabel: "CS",
+      fields: [{ id: "chart", label: "Sơ đồ", type: "dental-chart" as const, half: true }],
+    };
+    render(
+      <WizardStepRenderer step={chartStep} data={{ chart: {} }} onChange={vi.fn()} />,
+    );
+    const region = screen.getByRole("region", { name: "Sơ đồ răng" });
+    const wrapper = region.closest("div[class]");
+    expect(wrapper?.className).toMatch(/col-span-2/);
+  });
+
   it("hides fields where isFieldVisible returns false", () => {
     render(
       <WizardStepRenderer
@@ -324,5 +355,74 @@ describe("WizardStepRenderer", () => {
       />,
     );
     expect(onChange).toHaveBeenCalledWith("detail", "");
+  });
+
+  it("clears hidden multi-checkbox field to [] not empty string", () => {
+    const onChange = vi.fn();
+    const mcStep = {
+      id: "mc-step",
+      label: "MC Step",
+      shortLabel: "MC",
+      fields: [
+        { id: "trigger", label: "Trigger", type: "text" as const },
+        {
+          id: "checks",
+          label: "Checks",
+          type: "multi-checkbox" as const,
+          options: [{ value: "A", label: "A" }],
+          visibleWhen: { fieldId: "trigger", notEquals: "hide" },
+        },
+      ],
+    };
+    const { rerender } = render(
+      <WizardStepRenderer
+        step={mcStep}
+        data={{ trigger: "show", checks: ["A"] }}
+        onChange={onChange}
+      />,
+    );
+    rerender(
+      <WizardStepRenderer
+        step={mcStep}
+        data={{ trigger: "hide", checks: ["A"] }}
+        onChange={onChange}
+      />,
+    );
+    expect(onChange).toHaveBeenCalledWith("checks", []);
+    expect(onChange).not.toHaveBeenCalledWith("checks", "");
+  });
+
+  it("clears hidden dental-chart field to {} not empty string", () => {
+    const onChange = vi.fn();
+    const dcStep = {
+      id: "dc-step",
+      label: "DC Step",
+      shortLabel: "DC",
+      fields: [
+        { id: "trigger", label: "Trigger", type: "text" as const },
+        {
+          id: "chart",
+          label: "Chart",
+          type: "dental-chart" as const,
+          visibleWhen: { fieldId: "trigger", notEquals: "hide" },
+        },
+      ],
+    };
+    const { rerender } = render(
+      <WizardStepRenderer
+        step={dcStep}
+        data={{ trigger: "show", chart: { 1: "D" } }}
+        onChange={onChange}
+      />,
+    );
+    rerender(
+      <WizardStepRenderer
+        step={dcStep}
+        data={{ trigger: "hide", chart: { 1: "D" } }}
+        onChange={onChange}
+      />,
+    );
+    expect(onChange).toHaveBeenCalledWith("chart", {});
+    expect(onChange).not.toHaveBeenCalledWith("chart", "");
   });
 });
