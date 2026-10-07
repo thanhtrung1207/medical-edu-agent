@@ -639,6 +639,24 @@ describe("ChatInterface slash command & clinical record", () => {
     );
   });
 
+  it("sends clinical analysis through chat mode even when Agent mode is selected", async () => {
+    mockGetActiveRecord.mockReturnValue(activeRecord);
+    mockSendMessage.mockResolvedValue({ answer: "OK", content: "OK", session_id: "s1" });
+    render(<ChatInterface />);
+    fireEvent.click(screen.getByRole("button", { name: "Agent" }));
+    selectSlashCommand("chan-doan");
+    await waitFor(() =>
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        "Yêu cầu: Phân tích chẩn đoán",
+        expect.any(String),
+        undefined,
+        "chat",
+        "chan-doan",
+        expect.stringContaining("Răng:"),
+      ),
+    );
+  });
+
   it("writes sessionId immutably to an active record after first response", async () => {
     mockGetActiveRecord.mockReturnValue(activeRecord);
     mockSendMessage.mockResolvedValue({ answer: "OK", session_id: "new-session" });
@@ -677,6 +695,25 @@ describe("ChatInterface slash command & clinical record", () => {
     );
     expect(mockCloseRecord).toHaveBeenCalledWith(activeRecord.id, "Tóm tắt ca");
     expect(mockPush).toHaveBeenCalledWith("/history");
+  });
+
+  it("sends /ket-thuc through chat mode even when Agent mode is selected", async () => {
+    mockGetActiveRecord.mockReturnValue(activeRecord);
+    mockSendMessage.mockResolvedValue({ answer: "Tóm tắt ca", session_id: "s1" });
+    render(<ChatInterface />);
+    fireEvent.click(screen.getByRole("button", { name: "Agent" }));
+    selectSlashCommand("ket-thuc");
+    await waitFor(() =>
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        "Yêu cầu: Tóm tắt và lưu case",
+        expect.any(String),
+        undefined,
+        "chat",
+        "ket-thuc",
+        expect.any(String),
+        { timeoutMs: 60_000 },
+      ),
+    );
   });
 
   it("ignores a repeated /ket-thuc while the first summary request is running", () => {

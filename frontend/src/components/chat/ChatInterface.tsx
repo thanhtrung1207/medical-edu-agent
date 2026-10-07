@@ -243,10 +243,12 @@ export function ChatInterface({
     text: string,
     commandId?: string,
     clinicalContextOverride?: string,
+    modeOverride?: ChatMode,
   ) => {
     const trimmed = text.trim();
     if (!trimmed || isThinking || !userId) return;
 
+    const requestMode = modeOverride ?? mode;
     const requestGeneration = conversationGenerationRef.current;
     const isCurrentConversation = () =>
       requestGeneration === conversationGenerationRef.current;
@@ -271,11 +273,11 @@ export function ChatInterface({
               trimmed,
               userId,
               sessionId ?? undefined,
-              mode,
+              requestMode,
               commandId,
               clinicalContext,
             )
-          : await sendMessage(trimmed, userId, sessionId ?? undefined, mode);
+          : await sendMessage(trimmed, userId, sessionId ?? undefined, requestMode);
 
       if (!isCurrentConversation()) return;
 
@@ -441,7 +443,7 @@ export function ChatInterface({
 
     if (cmd.handler === "send-message") {
       const message = `Yêu cầu: ${cmd.label}`;
-      void handleSend(message, cmd.id, getClinicalContext(activeClinicalRecord));
+      void handleSend(message, cmd.id, getClinicalContext(activeClinicalRecord), "chat");
     }
   }
 
@@ -455,7 +457,7 @@ export function ChatInterface({
         "Yêu cầu: Tóm tắt và lưu case",
         userId!,
         sessionId ?? undefined,
-        mode,
+        "chat",
         "ket-thuc",
         getClinicalContext(activeClinicalRecord),
         { timeoutMs: CASE_SUMMARY_TIMEOUT_MS },
@@ -727,7 +729,7 @@ export function ChatInterface({
           <div className="relative flex items-end gap-2">
             {/* Slash command menu — positioned above the input row */}
             {slashMenuOpen && (
-              <div className="absolute bottom-full left-0 mb-1 w-72">
+              <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-50 w-[min(22rem,calc(100vw-2rem))]">
                 <SlashCommandMenu
                   query={slashQuery}
                   onSelect={handleSlashCommand}

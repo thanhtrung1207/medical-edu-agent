@@ -95,6 +95,15 @@ describe("SlashCommandMenu", () => {
       expect(mockSearch).toHaveBeenCalledWith("");
     });
 
+    it("bounds its height and scrolls internally", () => {
+      mockSearch.mockReturnValue([CMD_CASE, CMD_ANALYSIS]);
+      render(<SlashCommandMenu query="" onSelect={vi.fn()} onClose={vi.fn()} />);
+
+      const menu = screen.getByRole("menu", { name: "Slash commands" });
+      expect(menu).toHaveClass("max-h-64");
+      expect(menu).toHaveClass("overflow-y-auto");
+    });
+
     it("omits a category heading when that category yields no results", () => {
       mockSearch.mockReturnValue([CMD_CASE]);
       render(<SlashCommandMenu query="" onSelect={vi.fn()} onClose={vi.fn()} />);

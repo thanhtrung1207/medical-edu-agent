@@ -226,7 +226,7 @@ export function SlashCommandMenu({
     <div
       role="menu"
       aria-label="Slash commands"
-      className="absolute z-50 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
+      className="max-h-64 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl ring-1 ring-black/5 dark:border-slate-700 dark:bg-slate-900 dark:ring-white/10"
     >
       {allCommands.length === 0 ? (
         /* Empty-state row (I-3) */
