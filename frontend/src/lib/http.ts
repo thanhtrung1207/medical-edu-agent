@@ -41,15 +41,39 @@ function refreshSession(): Promise<boolean> {
 }
 
 /**
- * fetch() wrapper that always sends auth cookies and retries once after a
- * successful token refresh when the backend returns 401. Concurrent 401s
- * share a single in-flight refresh call instead of each triggering their own.
+ * Cookies are only sent for same-origin requests and cross-origin /auth/*
+ * calls. Cross-origin /api/* calls intentionally omit credentials: hosted
+ * backends (e.g. Hugging Face Spaces) answer CORS preflights at their edge
+ * proxy without Access-Control-Allow-Credentials, so a credentialed
+ * preflighted request is always rejected by the browser, while a
+ * non-credentialed one passes. No /api/* endpoint reads cookies (user
+ * identity travels in the request body/query), so nothing is lost.
+ */
+function shouldSendCredentials(url: string): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const target = new URL(url, window.location.href);
+    if (target.origin === window.location.origin) return true;
+    return target.pathname.startsWith("/auth/");
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * fetch() wrapper that sends auth cookies when the target needs them and
+ * retries once after a successful token refresh when the backend returns
+ * 401. Concurrent 401s share a single in-flight refresh call instead of
+ * each triggering their own.
  */
 export async function apiFetch(
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const requestInit: RequestInit = { ...init, credentials: "include" };
+  const requestInit: RequestInit = {
+    ...init,
+    credentials: shouldSendCredentials(url) ? "include" : "omit",
+  };
 
   const first = await fetch(url, requestInit);
   if (first.status !== 401) return first;

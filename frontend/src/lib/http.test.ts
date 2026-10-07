@@ -24,6 +24,45 @@ describe("apiFetch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.example.com/api/chat/sessions",
+      expect.objectContaining({ credentials: "omit" }),
+    );
+  });
+
+  it("omits credentials for cross-origin /api requests so CORS preflight passes on hosted proxies", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(responseWithStatus(200));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("https://api.example.com/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.com/api/chat",
+      expect.objectContaining({ credentials: "omit" }),
+    );
+  });
+
+  it("keeps credentials for cross-origin /auth requests that need the auth cookies", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(responseWithStatus(200));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("https://api.example.com/auth/me");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.com/auth/me",
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("keeps credentials for same-origin requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(responseWithStatus(200));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("http://localhost:3000/api/chat/sessions");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:3000/api/chat/sessions",
       expect.objectContaining({ credentials: "include" }),
     );
   });

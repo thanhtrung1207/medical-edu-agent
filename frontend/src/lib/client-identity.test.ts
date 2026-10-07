@@ -67,7 +67,7 @@ describe("client identity", () => {
         user_id: "user-uuid",
         session_id: "session-1",
       }),
-      credentials: "include",
+      credentials: "omit",
     });
   });
 
@@ -82,7 +82,7 @@ describe("client identity", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/chat/history/session-1?user_id=user-uuid",
-      { credentials: "include" },
+      { credentials: "omit" },
     );
   });
 
@@ -107,17 +107,17 @@ describe("client identity", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       "http://localhost:8000/api/memories?user_id=user-uuid",
-      { credentials: "include" },
+      { credentials: "omit" },
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       "http://localhost:8000/api/memories/7?user_id=user-uuid",
-      { method: "DELETE", credentials: "include" },
+      { method: "DELETE", credentials: "omit" },
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "http://localhost:8000/api/memories?user_id=user-uuid",
-      { method: "DELETE", credentials: "include" },
+      { method: "DELETE", credentials: "omit" },
     );
   });
 
@@ -156,7 +156,7 @@ describe("client identity", () => {
           answers: {},
           user_id: "user-uuid",
         }),
-        credentials: "include",
+        credentials: "omit",
       },
     );
   });
