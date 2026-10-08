@@ -81,9 +81,4 @@ qa_agent = Agent(
         FunctionTool(search_anatomy),
     ],
 )
-"""Q&A Expert Agent - Medical Knowledge Question Answering.
 
-This agent answers medical questions grounded in evidence-based medicine.
-It will use the medical_search tool to retrieve relevant context from the
-knowledge base (medical textbooks and clinical guidelines) before responding.
-"""

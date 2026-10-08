@@ -28,12 +28,11 @@ from api import auth, chat, documents, feedback, memories, quiz  # noqa: E402
 from api.deps import services  # noqa: E402
 from api.models import HealthResponse, StatsResponse  # noqa: E402
 
+from core.tracing import TracingMiddleware, get_current_trace_id, setup_logging
+
 APP_VERSION = "1.0.0"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-)
+setup_logging(app_env=os.getenv("APP_ENV", "development"))
 logger = logging.getLogger("medical_edu_agent")
 
 
@@ -62,6 +61,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(TracingMiddleware)
+
 # CORS — allow the Next.js dev frontend plus the deployed production origin.
 _cors_origins = [
     "http://localhost:3000",
@@ -86,6 +87,11 @@ app.add_middleware(
 # signed cookie unrelated to the app's own access/refresh token cookies.
 _session_secret_key = os.getenv("JWT_SECRET_KEY")
 if not _session_secret_key:
+    if os.getenv("APP_ENV") == "production":
+        raise ValueError(
+            "JWT_SECRET_KEY must be set in production. "
+            "Refusing to start with an insecure session-signing secret."
+        )
     logger.warning(
         "JWT_SECRET_KEY is not set — falling back to an insecure development "
         "session-signing secret. Set JWT_SECRET_KEY before deploying to production."
@@ -135,8 +141,13 @@ def stats():
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Return a JSON error body for any unhandled exception."""
-    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-    return JSONResponse(status_code=500, content={"error": str(exc)})
+    trace_id = get_current_trace_id()
+    logger.exception("[%s] Unhandled error on %s %s", trace_id, request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"error": str(exc), "trace_id": trace_id},
+        headers={"X-Trace-ID": trace_id},
+    )
 
 
 if __name__ == "__main__":
@@ -146,11 +157,3 @@ if __name__ == "__main__":
     port = int(os.getenv("APP_PORT", "8000"))
     reload = os.getenv("APP_ENV", "development") == "development"
     uvicorn.run("main:app", host=host, port=port, reload=reload)
-"""Medical Education AI Agent - FastAPI Server Entry Point."""
-
-# Placeholder - will be implemented in Task 5
-# This file will set up the FastAPI application with ADK integration
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

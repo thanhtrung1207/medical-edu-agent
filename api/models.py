@@ -66,6 +66,7 @@ class ChatResponse(BaseModel):
     reasoning_steps: List[str] = Field(default_factory=list)
     session_id: str
     message_id: str
+    trace_id: Optional[str] = None
 
 
 class ChatHistoryResponse(BaseModel):

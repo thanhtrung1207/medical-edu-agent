@@ -143,9 +143,4 @@ def search_medical_knowledge(
     return (
         f"Tìm thấy {len(hits)} đoạn tài liệu liên quan đến truy vấn:\n\n{citations}"
     )
-"""Medical Search Tool - Knowledge Base Retrieval.
 
-This tool performs semantic search over the medical knowledge base
-(ChromaDB embeddings of textbooks and guidelines) to retrieve relevant
-passages for grounding agent responses (RAG).
-"""

@@ -1,11 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { SecurityNoticeBanner } from "@/contexts/SecurityNoticeBanner";
-
-const inter = Inter({ subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
   title: "UniDent — Trợ lý AI Giáo dục Nha khoa",
@@ -26,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="vi" className={inter.className} suppressHydrationWarning>
+    <html lang="vi" className="font-sans" suppressHydrationWarning>
       <body>
         <AuthProvider>
           <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-cream text-slate-900 dark:bg-slate-950 dark:text-slate-100">

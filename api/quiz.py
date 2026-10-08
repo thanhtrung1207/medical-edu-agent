@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
+from core.tracing import trace_span
 from memory.learning_memory import normalize_topic
 
 from .deps import Services, get_services, rate_limiter
@@ -143,34 +144,35 @@ async def generate_quiz(
     """Generate a quiz and store it (with answers) server-side."""
     rate_limiter.check(f"quiz:{request.user_id or 'anonymous'}")
 
-    questions = await _generate_questions(
-        request.topic, request.difficulty, request.count
-    )
-    quiz_id = f"quiz_{uuid.uuid4().hex[:12]}"
-    svc.quiz_store[quiz_id] = {
-        "id": quiz_id,
-        "topic": request.topic,
-        "difficulty": request.difficulty,
-        "questions": questions,
-        "created_at": datetime.now().isoformat(),
-    }
-
-    # Public questions omit the correct answer / explanation.
-    public_questions = [
-        QuizQuestion(
-            id=q["id"],
-            stem=q["stem"],
-            options=[QuizOption(**opt) for opt in q["options"]],
+    with trace_span("quiz.generate", topic=request.topic, difficulty=request.difficulty, count=request.count):
+        questions = await _generate_questions(
+            request.topic, request.difficulty, request.count
         )
-        for q in questions
-    ]
-    return QuizGenerateResponse(
-        quiz_id=quiz_id,
-        id=quiz_id,
-        topic=request.topic,
-        difficulty=request.difficulty,
-        questions=public_questions,
-    )
+        quiz_id = f"quiz_{uuid.uuid4().hex[:12]}"
+        svc.quiz_store[quiz_id] = {
+            "id": quiz_id,
+            "topic": request.topic,
+            "difficulty": request.difficulty,
+            "questions": questions,
+            "created_at": datetime.now().isoformat(),
+        }
+
+        # Public questions omit the correct answer / explanation.
+        public_questions = [
+            QuizQuestion(
+                id=q["id"],
+                stem=q["stem"],
+                options=[QuizOption(**opt) for opt in q["options"]],
+            )
+            for q in questions
+        ]
+        return QuizGenerateResponse(
+            quiz_id=quiz_id,
+            id=quiz_id,
+            topic=request.topic,
+            difficulty=request.difficulty,
+            questions=public_questions,
+        )
 
 
 @router.post("/quiz/submit", response_model=QuizSubmitResponse)
@@ -183,72 +185,73 @@ def submit_quiz(
     if quiz is None:
         raise HTTPException(status_code=404, detail="Quiz not found")
 
-    details: List[QuizAnswerDetail] = []
-    correct_count = 0
     topic = quiz["topic"]
+    with trace_span("quiz.submit", quiz_id=quiz_id, topic=topic, user_id=request.user_id):
+        details: List[QuizAnswerDetail] = []
+        correct_count = 0
 
-    for question in quiz["questions"]:
-        selected = str(request.answers.get(question["id"], "")).strip().upper()[:1]
-        is_correct = selected == question["correct_answer"]
-        if is_correct:
-            correct_count += 1
-        details.append(
-            QuizAnswerDetail(
-                questionId=question["id"],
-                selected=selected,
-                correct=is_correct,
-                correctAnswer=question["correct_answer"],
-                explanation=question.get("explanation"),
-            )
-        )
-        # Feed each answer into the adaptive engine for mastery tracking.
-        try:
-            svc.adaptive_engine.update_progress(request.user_id, topic, is_correct)
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("Progress update skipped: %s", exc)
-
-    total = len(quiz["questions"])
-    score = round((correct_count / total) * 100, 1) if total else 0.0
-    incorrect_count = total - correct_count
-    if incorrect_count:
-        try:
-            memory_topic = normalize_topic(topic)
-            if memory_topic:
-                svc.memory_store.store(
-                    request.user_id,
-                    "weak_area",
-                    memory_topic,
-                    {
-                        "topic": memory_topic,
-                        "incorrect_count": incorrect_count,
-                        "last_score": score,
-                    },
-                    confidence=incorrect_count / total,
+        for question in quiz["questions"]:
+            selected = str(request.answers.get(question["id"], "")).strip().upper()[:1]
+            is_correct = selected == question["correct_answer"]
+            if is_correct:
+                correct_count += 1
+            details.append(
+                QuizAnswerDetail(
+                    questionId=question["id"],
+                    selected=selected,
+                    correct=is_correct,
+                    correctAnswer=question["correct_answer"],
+                    explanation=question.get("explanation"),
                 )
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Weak-area memory write skipped: %s", type(exc).__name__)
+            )
+            # Feed each answer into the adaptive engine for mastery tracking.
+            try:
+                svc.adaptive_engine.update_progress(request.user_id, topic, is_correct)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.debug("Progress update skipped: %s", exc)
 
-    svc.quiz_history[request.user_id].append(
-        {
-            "quiz_id": quiz_id,
-            "topic": topic,
-            "difficulty": quiz.get("difficulty"),
-            "score": score,
-            "total": total,
-            "correct": correct_count,
-            "submitted_at": datetime.now().isoformat(),
-        }
-    )
+        total = len(quiz["questions"])
+        score = round((correct_count / total) * 100, 1) if total else 0.0
+        incorrect_count = total - correct_count
+        if incorrect_count:
+            try:
+                memory_topic = normalize_topic(topic)
+                if memory_topic:
+                    svc.memory_store.store(
+                        request.user_id,
+                        "weak_area",
+                        memory_topic,
+                        {
+                            "topic": memory_topic,
+                            "incorrect_count": incorrect_count,
+                            "last_score": score,
+                        },
+                        confidence=incorrect_count / total,
+                    )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Weak-area memory write skipped: %s", type(exc).__name__)
 
-    return QuizSubmitResponse(
-        quizId=quiz_id,
-        score=score,
-        total=total,
-        correct=correct_count,
-        correctCount=correct_count,
-        details=details,
-        results=details,
-    )
+        svc.quiz_history[request.user_id].append(
+            {
+                "quiz_id": quiz_id,
+                "topic": topic,
+                "difficulty": quiz.get("difficulty"),
+                "score": score,
+                "total": total,
+                "correct": correct_count,
+                "submitted_at": datetime.now().isoformat(),
+            }
+        )
+
+        return QuizSubmitResponse(
+            quizId=quiz_id,
+            score=score,
+            total=total,
+            correct=correct_count,
+            correctCount=correct_count,
+            details=details,
+            results=details,
+        )
 
 
 @router.get("/quiz/history/{user_id}")

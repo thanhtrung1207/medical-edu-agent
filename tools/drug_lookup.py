@@ -74,8 +74,4 @@ def lookup_drug_info(drug_name: str, info_type: str = "all") -> str:
     header = f"Thông tin thuốc: {drug_name}"
     body = "\n\n".join(sections)
     return f"{header}\n\n{body}\n\n*{_DISCLAIMER}.*"
-"""Drug Lookup Tool - Medication Information Retrieval.
 
-This tool looks up drug information such as indications, dosing,
-contraindications, and interactions to support clinical questions.
-"""

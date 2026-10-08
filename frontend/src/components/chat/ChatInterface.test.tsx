@@ -750,6 +750,28 @@ describe("ChatInterface slash command & clinical record", () => {
   });
 });
 
+describe("ChatInterface Clinical Studio Canvas toggle", () => {
+  it("toggles the studio canvas open and closed", () => {
+    render(<ChatInterface freshSession />);
+
+    const toggleBtn = screen.getByRole("button", {
+      name: /mở clinical studio canvas/i,
+    });
+    expect(toggleBtn).toBeDefined();
+
+    // Open canvas
+    fireEvent.click(toggleBtn);
+    expect(screen.getAllByText("Clinical Canvas").length).toBeGreaterThan(0);
+
+    // Close canvas
+    const closeBtn = screen.getByRole("button", {
+      name: /thu gọn clinical canvas/i,
+    });
+    fireEvent.click(closeBtn);
+    expect(screen.queryByText("Clinical Canvas")).toBeNull();
+  });
+});
+
 const SUGGESTIONS = [
   "Phân loại mức độ gãy vỡ răng theo Ellis?",
   "Khi nào nên cắm implant thay cho răng mất đơn lẻ?",

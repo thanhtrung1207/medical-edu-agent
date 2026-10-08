@@ -35,7 +35,7 @@ const DIFFICULTY_TO_TRACKING: Record<
 export default function QuizPage() {
   const [topic, setTopic] = useState("");
   const [difficulty, setDifficulty] = useState<QuizDifficulty>("medium");
-  const [count, setCount] = useState(5);
+  const [count, setCount] = useState<number | string>(5);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [result, setResult] = useState<QuizResult | null>(null);
@@ -57,10 +57,11 @@ export default function QuizPage() {
     setAnswers({});
     setNextReviewDays(null);
     try {
+      const parsedCount = Math.max(1, Math.min(20, typeof count === "number" ? count : parseInt(String(count), 10) || 5));
       const q = await generateQuiz(
         topic || "Y học tổng quát",
         difficulty,
-        count,
+        parsedCount,
       );
       setQuiz(q);
     } catch {
@@ -188,9 +189,23 @@ export default function QuizPage() {
                   min={1}
                   max={20}
                   value={count}
-                  onChange={(e) =>
-                    setCount(Math.max(1, Math.min(20, Number(e.target.value))))
-                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "") {
+                      setCount("");
+                    } else {
+                      const num = parseInt(val, 10);
+                      if (!isNaN(num)) {
+                        setCount(num);
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    const num = typeof count === "number" ? count : parseInt(String(count), 10);
+                    if (isNaN(num) || num < 1) setCount(1);
+                    else if (num > 20) setCount(20);
+                    else setCount(num);
+                  }}
                 />
               </div>
             </div>

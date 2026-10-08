@@ -72,9 +72,4 @@ case_study_agent = Agent(
         FunctionTool(lookup_drug_info),
     ],
 )
-"""Case Study Analyst Agent - Clinical Case Analysis.
 
-This agent analyzes clinical cases, guiding the user through differential
-diagnosis, investigation planning, and management reasoning based on
-evidence-based medicine.
-"""

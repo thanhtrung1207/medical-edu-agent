@@ -803,3 +803,38 @@ class TestQuizEndpoints:
         assert test_client.get("/api/memories", params={"user_id": "u1"}).json() == {
             "memories": []
         }
+
+    def test_quiz_persists_across_server_restart(self, test_client, monkeypatch):
+        """A generated quiz and its history survive backend service restart."""
+        monkeypatch.setattr("api.quiz._QUIZ_LLM_AVAILABLE", False)
+        # 1. Generate quiz on instance 1
+        generated = test_client.post(
+            "/api/quiz/generate",
+            json={"topic": "Dược lý học", "difficulty": "hard", "count": 2, "user_id": "doctor_bob"},
+        )
+        assert generated.status_code == 200
+        quiz_id = generated.json()["quiz_id"]
+
+        # 2. Simulate server restart by re-initializing services
+        from api.deps import services
+        services._started = False
+        services.startup()
+
+        # 3. Submit to the quiz after restart
+        submit_resp = test_client.post(
+            "/api/quiz/submit",
+            json={"quiz_id": quiz_id, "user_id": "doctor_bob", "answers": {"q1": "B", "q2": "B"}},
+        )
+        assert submit_resp.status_code == 200
+        assert submit_resp.json()["score"] == 100.0
+
+        # 4. Another restart before checking history
+        services._started = False
+        services.startup()
+
+        history_resp = test_client.get("/api/quiz/history/doctor_bob")
+        assert history_resp.status_code == 200
+        quizzes = history_resp.json()["quizzes"]
+        assert len(quizzes) == 1
+        assert quizzes[0]["quiz_id"] == quiz_id
+        assert quizzes[0]["score"] == 100.0

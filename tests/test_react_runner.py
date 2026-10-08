@@ -626,3 +626,65 @@ async def test_react_sanitizes_unicode_controls_in_all_normalized_sources_and_pr
         "Nội dung Việt\nDòng hai\tđược giữ" in source["content"]
         for source in state["retrieved_sources"]
     )
+
+
+@pytest.mark.asyncio
+async def test_react_runner_executes_anatomy_and_drug_tools():
+    steps = [
+        json.dumps({"thought": "tra cứu giải phẫu", "action": "search_anatomy", "action_input": "xoang hàm"}),
+        json.dumps({"thought": "tra cứu dược lý", "action": "drug_lookup", "action_input": "Articaine"}),
+        json.dumps({"thought": "kết luận", "final_answer": "Kết luận Socratic [RAG1] [RAG2]"}),
+    ]
+    step_llm = _llm_from_steps(steps)
+
+    runner = ReActRunner(
+        llm=step_llm,
+        rag_search=lambda q: [],
+        web_search=lambda q: [],
+        read_url=lambda u: "",
+        verify=_identity_verify,
+        anatomy_tool=lambda structure: f"Cấu trúc giải phẫu của {structure}",
+        drug_lookup=lambda drug: f"Dược động học của {drug}",
+        max_iterations=5,
+    )
+
+    state = await runner.run("Ca lâm sàng", context={})
+    assert state["formatted_answer"] == "Kết luận Socratic [RAG1] [RAG2]"
+    assert len(state["retrieved_sources"]) == 2
+    assert state["retrieved_sources"][0]["title"] == "Giải phẫu: xoang hàm"
+    assert "Cấu trúc giải phẫu của xoang hàm" in state["retrieved_sources"][0]["content"]
+    assert state["retrieved_sources"][1]["title"] == "Dược lý: Articaine"
+    assert "Dược động học của Articaine" in state["retrieved_sources"][1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_react_runner_invokes_streaming_on_step_callback():
+    steps = [
+        json.dumps({"thought": "suy nghĩ bước 1", "action": "search_anatomy", "action_input": "răng 16"}),
+        json.dumps({"thought": "suy nghĩ bước 2", "final_answer": "Chào sinh viên"}),
+    ]
+    step_llm = _llm_from_steps(steps)
+
+    runner = ReActRunner(
+        llm=step_llm,
+        rag_search=lambda q: [],
+        web_search=lambda q: [],
+        read_url=lambda u: "",
+        verify=_identity_verify,
+        anatomy_tool=lambda s: "Giải phẫu R16",
+        max_iterations=3,
+    )
+
+    captured_events: List[Dict[str, Any]] = []
+
+    async def on_step(event: Dict[str, Any]):
+        captured_events.append(event)
+
+    state = await runner.run("Câu hỏi", context={}, on_step=on_step)
+    assert state["formatted_answer"] == "Chào sinh viên"
+
+    event_types = [e["type"] for e in captured_events]
+    assert "thought" in event_types
+    assert "tool_call" in event_types
+    assert "tool_result" in event_types
+    assert "answer" in event_types

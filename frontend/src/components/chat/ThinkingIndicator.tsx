@@ -7,18 +7,28 @@ import { cn } from "@/lib/utils";
 interface ThinkingIndicatorProps {
   /** Optional detailed reasoning steps to reveal when expanded. */
   steps?: string[];
+  mode?: "chat" | "agent";
 }
 
 const DEFAULT_STEPS = [
-  "🔍 Đang xác nhận...",
-  "🧠 Đang phân tích...",
-  "✍️ Đang soạn...",
-  "✅ Đang kiểm tra...",
+  "🔍 Đang xác nhận yêu cầu...",
+  "🧠 Đang phân tích thông tin...",
+  "✍️ Đang soạn câu trả lời...",
+  "✅ Đang kiểm tra an toàn y khoa...",
 ];
 
-export function ThinkingIndicator({ steps }: ThinkingIndicatorProps) {
+const AGENT_STEPS = [
+  "🧭 Phân tích mục tiêu & dữ kiện ca bệnh...",
+  "📚 Tra cứu tài liệu y văn & guidelines (RAG / Web)...",
+  "⚖️ Đánh giá bằng chứng & suy luận xác suất...",
+  "🎓 Đặt câu hỏi dẫn dắt theo phương pháp Socratic...",
+];
+
+export function ThinkingIndicator({ steps, mode = "chat" }: ThinkingIndicatorProps) {
   const [expanded, setExpanded] = useState(false);
-  const detailSteps = steps && steps.length > 0 ? steps : DEFAULT_STEPS;
+  const isAgent = mode === "agent";
+  const defaultList = isAgent ? AGENT_STEPS : DEFAULT_STEPS;
+  const detailSteps = steps && steps.length > 0 ? steps : defaultList;
 
   return (
     <div className="flex justify-start animate-fade-in">
@@ -34,7 +44,7 @@ export function ThinkingIndicator({ steps }: ThinkingIndicatorProps) {
             ))}
           </div>
           <span className="text-sm text-slate-600 dark:text-slate-300">
-            Trợ lý đang suy nghĩ...
+            {isAgent ? "Agent đang suy luận & tra cứu (ReAct)..." : "Trợ lý đang suy nghĩ..."}
           </span>
           <button
             type="button"

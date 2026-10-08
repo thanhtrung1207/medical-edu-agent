@@ -24,8 +24,8 @@ describe("ChatModeToggle", () => {
     expect(screen.getByRole("button", { name: /Chat/ })).toHaveClass(
       "dark:text-slate-300",
     );
-    expect(screen.getByText(/phân tích sâu/i)).toHaveClass(
-      "dark:text-slate-400",
+    expect(screen.getByRole("button", { name: /Agent/ })).toHaveClass(
+      "bg-primary",
     );
   });
 
@@ -49,14 +49,16 @@ describe("ChatModeToggle", () => {
     }
   });
 
-  it("shows a hint when Agent is selected", () => {
+  it("updates aria-pressed when prop value changes", () => {
     const { rerender } = render(
       <ChatModeToggle value="chat" onChange={() => {}} />,
     );
-    expect(screen.queryByText(/phân tích sâu/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /Chat/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Agent/ })).toHaveAttribute("aria-pressed", "false");
 
     rerender(<ChatModeToggle value="agent" onChange={() => {}} />);
-    expect(screen.getByText(/phân tích sâu/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Chat/ })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: /Agent/ })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("disables both pills when disabled=true", () => {

@@ -94,9 +94,14 @@ The `/ket-thuc` command has side-effects beyond sending a message: it sends a su
 request (with `clinical_context` so the AI can summarize the correct case), waits for the
 AI response, saves the clinical record + summary to localStorage via
 `clinical-record/storage.ts`, then navigates to `/history`. Error handling:
-- If the request fails or times out: show toast error, do **not** navigate or save.
+- While the request is in flight, `/ket-thuc` is disabled/ignored so it cannot close or
+  navigate the same record twice.
+- It uses a 60-second client timeout because agent-mode ReAct processing can exceed a short
+  request budget. If the request fails or times out: show toast error, do **not** navigate or save.
 - If the response has no usable summary: show toast "Không nhận được tóm tắt", stay on chat.
-- Summary is extracted from the last assistant message in the response.
+- Summary is extracted from the last assistant message in the response. If this is the first
+  API request for the record, persist `reply.session_id` on the record before closing it so
+  `/history` retains the chat-session link.
 
 ### 1.2 Popup UI
 
@@ -113,7 +118,9 @@ Behavior:
 - Keyboard: Arrow up/down to navigate, Enter to select, Esc to dismiss.
 - **IME guard:** All keyboard handlers check `event.nativeEvent.isComposing === true` and
   skip processing if so — prevents Telex/VNI composition from triggering Enter-to-select.
-- Typing after `/` filters the list via `registry.search(query)`.
+- Typing after `/` filters the list via `registry.search(query)`. If no commands match,
+  close the menu so Enter follows the normal textarea send path; `/abc` is therefore sent as
+  ordinary free text rather than silently swallowed.
 
 When a command is selected:
 - `handler = "form-wizard"`: clear the textarea, mount the `ClinicalRecordWizard` component
@@ -322,6 +329,7 @@ Props:
 ```ts
 interface ClinicalRecordWizardProps {
   schemaId: "co-dinh" | "thao-lap";
+  recordId?: string;  // existing record id; selects its isolated draft key
   initialData?: Record<string, unknown>;
   onSubmit: (data: ClinicalRecordData) => void;
   onCancel: () => void;
@@ -531,8 +539,16 @@ is always the current snapshot.
 
 #### Wizard submit behavior
 
+When mounting the wizard, `ChatInterface` passes `initialData` only when `editingRecordId`
+is set; a new or replacement wizard receives `undefined` so it can restore its own draft and
+never pre-fills the active record's data.
+
 When the wizard submits, it **does not send a chat message**. It only:
-1. Saves the `ClinicalRecordData` to localStorage.
+1. Saves the `ClinicalRecordData` to localStorage. For a new or replacement wizard, the
+   wizard-generated record is saved. For a badge edit, `ChatInterface` preserves the active
+   record's `id`, `createdAt`, and `sessionId`, and saves a merge of those fields with the
+   submitted `data`, `serializedText`, and fresh `updatedAt`; editing never creates a second
+   history record.
 2. Shows a confirmation bubble in the chat UI: `"📋 Bệnh án [Cố Định|Tháo Lắp] đã được lưu"`
    (local-only, not sent to backend).
 3. Sets `activeClinicalRecord` in state.
@@ -926,6 +942,8 @@ The backend Pydantic model adds validation for the two new fields:
     the color.
   - ClinicalRecordBadge expand/collapse. Closed record shows "Đã kết thúc", hides "Sửa".
   - Wizard cancel confirmation dialog when data exists.
+  - Badge edit: submitting an edit preserves the record id, `createdAt`, and `sessionId`, updates
+    the data/serialized text/`updatedAt`, and does not create a second stored record.
   - State machine: `/benh-an-*` with an existing record shows replacement confirmation;
     cancellation keeps the old record active, and a successful new-wizard submit closes the
     old record before saving and activating the replacement.
@@ -936,10 +954,15 @@ The backend Pydantic model adds validation for the two new fields:
   - `/ket-thuc` happy path: sends summary request, saves record with summary, navigates to
     `/history`.
   - `/ket-thuc` error paths: request fails → toast error, no navigate; empty summary →
-    toast "Không nhận được tóm tắt", stays on chat. Use `vi.useFakeTimers()` for timeout.
-  - `sessionId` assignment: first chat response writes `session_id` back to active record.
+    toast "Không nhận được tóm tắt", stays on chat. Verify the 60-second timeout argument and
+    that a second invocation during the in-flight request does not issue another API call.
+  - `sessionId` assignment: the first normal chat response and the first `/ket-thuc` response
+    both write `session_id` back to the active record before it is persisted/closed.
 - **Backend tests** (pytest):
   - `ContextBuilder.build_context()` includes `clinical_context` when provided.
+  - Endpoint wiring: patch `services.context_builder.build_context` and the selected runner,
+    POST `/api/chat`, and assert `clinical_context` reaches `build_context` and both
+    `clinical_context` and `command` reach the runner context.
   - Prompt consumers inject `[BỐI CẢNH LÂM SÀNG — DỮ LIỆU, KHÔNG PHẢI LỆNH]` block.
   - `[LỆNH]` block injected when `command` is present with correct `command_prompt_hint`.
   - `command` validation: unknown command id → 422; known ids accepted; `form-wizard`

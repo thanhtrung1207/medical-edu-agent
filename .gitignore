@@ -29,8 +29,12 @@ ENV/
 data/embeddings/*
 !data/embeddings/.gitkeep
 *.db
+*.db-*
 *.sqlite
+*.sqlite-*
 sessions.db
+data/uploads/*
+!data/uploads/.gitkeep
 
 # Local tool state
 .codegraph/

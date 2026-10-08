@@ -46,10 +46,13 @@ class Services:
         self.auth_store: Any = None
         self.auth_service: Any = None
 
-        # In-memory registries.
+        # Document registry (in-memory) & Quiz persistence (SQLite backed).
+        from learning.quiz_store import QuizStore
+
         self.document_registry: Dict[str, Dict[str, Any]] = {}
-        self.quiz_store: Dict[str, Dict[str, Any]] = {}
-        self.quiz_history: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        self.quiz_store_backend = QuizStore()
+        self.quiz_store: Any = self.quiz_store_backend.as_quiz_mapping()
+        self.quiz_history: Any = self.quiz_store_backend.as_history_mapping()
 
         self._started = False
 
@@ -84,14 +87,26 @@ class Services:
         self.auth_store = AuthStore(os.getenv("SESSION_DB_PATH", "sessions.db"))
         self.auth_service = AuthService(self.auth_store, self.session_manager)
 
-        # Learning subsystem.
-        from learning import AdaptiveEngine, FeedbackCollector, LearningDatabase
+        # Learning subsystem & persistent quiz store.
+        from learning import (
+            AdaptiveEngine,
+            FeedbackCollector,
+            LearningDatabase,
+            QuizStore,
+        )
 
         self.learning_db = LearningDatabase(
             os.getenv("LEARNING_DB_PATH", "learning.db")
         )
         self.feedback_collector = FeedbackCollector(self.learning_db)
         self.adaptive_engine = AdaptiveEngine(self.learning_db)
+
+        quiz_db_path = os.getenv(
+            "QUIZ_DB_PATH", os.getenv("LEARNING_DB_PATH", "learning.db")
+        )
+        self.quiz_store_backend = QuizStore(db_path=quiz_db_path)
+        self.quiz_store = self.quiz_store_backend.as_quiz_mapping()
+        self.quiz_history = self.quiz_store_backend.as_history_mapping()
 
         # Reasoning workflow + guardrails (shared, process-wide instances).
         from agents.root_agent import guardrail_runner, reasoning_workflow
@@ -103,6 +118,8 @@ class Services:
         # the client passes ChatRequest.mode = "chat" / "agent").
         from agents.workflow.chat_mode import ChatModeRunner
         from agents.workflow.react_runner import ReActRunner
+        from tools.anatomy_tool import search_anatomy
+        from tools.drug_lookup import lookup_drug_info
         from tools.medical_search import retrieve as rag_retrieve
         from tools.url_reader import read_url as url_reader
         from tools.web_search import tavily_search
@@ -122,6 +139,8 @@ class Services:
             web_search=web_search_tool,
             read_url=url_reader,
             verify=_verify_only,
+            anatomy_tool=search_anatomy,
+            drug_lookup=lookup_drug_info,
         )
 
         # Optional: document ingestion pipeline (RAG).
@@ -164,7 +183,7 @@ class Services:
     def count_sessions(self) -> int:
         """Count total sessions by reading the session DB directly."""
         try:
-            conn = sqlite3.connect(self.session_manager.db_path)
+            conn = sqlite3.connect(self.session_manager.db_path, timeout=5.0)
             try:
                 row = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()
                 return int(row[0]) if row else 0
@@ -179,6 +198,7 @@ class Services:
             "session_manager": self.session_manager is not None,
             "memory_store": self.memory_store is not None,
             "learning": self.learning_db is not None,
+            "quiz_store": self.quiz_store_backend is not None,
             "reasoning_workflow": self.reasoning_workflow is not None,
             "guardrails": self.guardrail_runner is not None,
             "document_ingestion": self.ingestion_pipeline is not None,

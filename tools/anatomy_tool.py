@@ -67,8 +67,4 @@ def search_anatomy(structure: str, system: str = "general") -> str:
     system_label = f" (thuộc {system_hint})" if system_hint else ""
     header = f"Thông tin giải phẫu: {structure}{system_label}"
     return f"{header}\n\n{format_citations(hits)}"
-"""Anatomy Tool - Anatomical Reference Lookup.
 
-This tool provides anatomical reference information (structures,
-relationships, and functions) to support educational explanations.
-"""

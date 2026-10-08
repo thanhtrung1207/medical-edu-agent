@@ -14,14 +14,17 @@ The chat endpoint ties the whole backend together:
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from agents.guardrails.models import DISCLAIMER_VI
+from core.tracing import get_current_trace_id, set_trace_context, trace_span
 from memory.learning_memory import extract_explicit_learning_facts
 
 from .deps import Services, get_services, rate_limiter
@@ -63,7 +66,11 @@ def _build_citations(state: Dict[str, Any]) -> List[Citation]:
     return citations
 
 
-async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
+async def _run_chat(
+    request: ChatRequest,
+    svc: Services,
+    on_step: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+) -> ChatResponse:
     """Execute the full chat pipeline and return a structured response."""
     # 1. Resolve or create the session.
     if request.session_id:
@@ -73,6 +80,11 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
     else:
         session = svc.session_manager.create_session(user_id=request.user_id)
     session_id = session.id
+    set_trace_context(user_id=request.user_id, session_id=session_id)
+    trace_id = get_current_trace_id()
+
+    if on_step:
+        await on_step({"type": "confirm", "content": {"session_id": session_id, "trace_id": trace_id}})
 
     # Set session title from first user message (only for new sessions).
     if session.topic is None:
@@ -89,13 +101,14 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
     )
 
     # 2 & 3. Guardrail pre-checks (scope + emergency) — short-circuit if blocked.
-    pre = svc.guardrail_runner.run_pre_checks(request.message)
+    with trace_span("guardrails.pre_checks", user_id=request.user_id):
+        pre = svc.guardrail_runner.run_pre_checks(request.message)
     if pre.should_block:
         answer = pre.block_reason or pre.disclaimer or DISCLAIMER_VI
         message_id = svc.session_manager.add_message(
             session_id, "assistant", answer, {"blocked": True, "stage": "pre"}
         )
-        logger.info("Chat blocked by pre-checks for session %s", session_id)
+        logger.info("Chat blocked by pre-checks for session %s (trace=%s)", session_id, trace_id)
         return ChatResponse(
             answer=answer,
             content=answer,
@@ -106,17 +119,19 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
             reasoning_steps=[],
             session_id=session_id,
             message_id=message_id,
+            trace_id=trace_id,
         )
 
     # 4. Build personalized context from memory (best-effort).
     context: Dict[str, Any] = {}
     try:
-        context = svc.context_builder.build_context(
-            request.user_id,
-            session_id,
-            current_topic,
-            clinical_context=request.clinical_context,
-        )
+        with trace_span("context_builder.build_context", user_id=request.user_id, session_id=session_id):
+            context = svc.context_builder.build_context(
+                request.user_id,
+                session_id,
+                current_topic,
+                clinical_context=request.clinical_context,
+            )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Context build failed: %s", type(exc).__name__)
     if request.command:
@@ -124,10 +139,18 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
 
     # 5. Run the mode-specific runner.
     try:
-        if request.mode == "chat":
-            state = await svc.chat_mode_runner.run(request.message, context)
-        else:
-            state = await svc.react_runner.run(request.message, context)
+        async with trace_span(f"runner.{request.mode}", mode=request.mode):
+            if request.mode == "chat":
+                state = await svc.chat_mode_runner.run(request.message, context)
+            elif on_step is not None:
+                try:
+                    state = await svc.react_runner.run(
+                        request.message, context, on_step=on_step
+                    )
+                except TypeError:
+                    state = await svc.react_runner.run(request.message, context)
+            else:
+                state = await svc.react_runner.run(request.message, context)
     except Exception as exc:
         logger.exception("Mode runner failed: %s", type(exc).__name__)
         fallback = "Đã xảy ra lỗi khi xử lý câu trả lời. Vui lòng thử lại sau."
@@ -159,12 +182,13 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
         for src in (state.get("retrieved_sources") or [])
         if isinstance(src, dict)
     ]
-    post = svc.guardrail_runner.run_post_checks(
-        response=answer,
-        sources=retrieved_content,
-        reasoning=reasoning_steps,
-        user_input=request.message,
-    )
+    with trace_span("guardrails.post_checks", confidence=confidence):
+        post = svc.guardrail_runner.run_post_checks(
+            response=answer,
+            sources=retrieved_content,
+            reasoning=reasoning_steps,
+            user_input=request.message,
+        )
     if post.should_block:
         answer = post.block_reason or post.disclaimer or answer
     for warning in post.warnings:
@@ -173,6 +197,12 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
     if post.confidence_score:
         confidence = float(post.confidence_score)
     disclaimer = post.disclaimer or DISCLAIMER_VI
+
+    if on_step:
+        await on_step({
+            "type": "verify",
+            "content": {"confidence": confidence, "warnings": warnings},
+        })
 
     # 7. Persist the assistant message, then record explicit learning facts.
     message_id = svc.session_manager.add_message(
@@ -211,6 +241,7 @@ async def _run_chat(request: ChatRequest, svc: Services) -> ChatResponse:
         reasoning_steps=reasoning_steps,
         session_id=session_id,
         message_id=message_id,
+        trace_id=trace_id,
     )
 
 
@@ -221,39 +252,72 @@ def _sse(step: str, content: Any) -> str:
 
 
 async def _stream_chat(request: ChatRequest, svc: Services):
-    """Yield the reasoning stages then the final answer as SSE events."""
+    """Yield real-time reasoning events and final answer via Server-Sent Events."""
+    queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+
+    async def _on_step(event: Dict[str, Any]):
+        step_type = event.get("type", "step")
+        content = event.get("content", event)
+        await queue.put(_sse(step_type, content))
+
+    async def _producer():
+        try:
+            sig = inspect.signature(_run_chat)
+            if "on_step" in sig.parameters:
+                result = await _run_chat(request, svc, on_step=_on_step)
+            else:
+                result = await _run_chat(request, svc)
+                await queue.put(_sse("confirm", {"session_id": result.session_id, "trace_id": result.trace_id}))
+                await queue.put(_sse("think", result.reasoning_steps))
+                await queue.put(
+                    _sse(
+                        "answer",
+                        {"answer": result.answer, "citations": [c.model_dump() for c in result.citations]},
+                    )
+                )
+                await queue.put(
+                    _sse(
+                        "verify",
+                        {"confidence": result.confidence, "warnings": result.warnings},
+                    )
+                )
+
+            await queue.put(
+                _sse(
+                    "done",
+                    {
+                        "answer": result.answer,
+                        "confidence": result.confidence,
+                        "citations": [c.model_dump() for c in result.citations],
+                        "warnings": result.warnings,
+                        "disclaimer": result.disclaimer,
+                        "reasoning_steps": result.reasoning_steps,
+                        "session_id": result.session_id,
+                        "message_id": result.message_id,
+                        "trace_id": result.trace_id,
+                    },
+                )
+            )
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Streaming chat failed")
+            await queue.put(_sse("error", "Đã xảy ra lỗi khi xử lý luồng trả lời."))
+        finally:
+            await queue.put(None)
+
+    producer_task = asyncio.create_task(_producer())
+
+    while True:
+        frame = await queue.get()
+        if frame is None:
+            break
+        yield frame
+
     try:
-        result = await _run_chat(request, svc)
+        await producer_task
     except HTTPException:
         raise
-    except Exception:  # pragma: no cover - defensive
-        logger.exception("Streaming chat failed")
-        yield _sse("error", "Đã xảy ra lỗi khi xử lý luồng trả lời.")
-        return
-
-    yield _sse("confirm", {"session_id": result.session_id})
-    yield _sse("think", result.reasoning_steps)
-    yield _sse(
-        "answer",
-        {"answer": result.answer, "citations": [c.model_dump() for c in result.citations]},
-    )
-    yield _sse(
-        "verify",
-        {"confidence": result.confidence, "warnings": result.warnings},
-    )
-    yield _sse(
-        "done",
-        {
-            "answer": result.answer,
-            "confidence": result.confidence,
-            "citations": [c.model_dump() for c in result.citations],
-            "warnings": result.warnings,
-            "disclaimer": result.disclaimer,
-            "reasoning_steps": result.reasoning_steps,
-            "session_id": result.session_id,
-            "message_id": result.message_id,
-        },
-    )
 
 
 @router.post("/chat")

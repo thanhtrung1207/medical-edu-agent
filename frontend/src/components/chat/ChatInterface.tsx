@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  LayoutDashboard,
   RotateCw,
   Send,
+  Sparkles,
   Stethoscope,
   X,
 } from "lucide-react";
@@ -33,6 +35,7 @@ import { ThinkingIndicator } from "./ThinkingIndicator";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { ClinicalRecordBadge } from "./ClinicalRecordBadge";
 import { ClinicalRecordWizard } from "@/components/clinical-record/ClinicalRecordWizard";
+import { ClinicalStudioCanvas } from "./ClinicalStudioCanvas";
 
 const SUGGESTIONS = [
   "Phân loại mức độ gãy vỡ răng theo Ellis?",
@@ -111,6 +114,7 @@ export function ChatInterface({
   const [wizardSchemaId, setWizardSchemaId] = useState<SchemaId | null>(null);
   const [pendingReplacementRecordId, setPendingReplacementRecordId] = useState<string | null>(null);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+  const [canvasOpen, setCanvasOpen] = useState(false);
 
   // ── /ket-thuc guard (ref for synchronous read before React re-render) ────────
   const isClosingCaseRef = useRef(false);
@@ -597,10 +601,44 @@ export function ChatInterface({
         </div>
       )}
 
-      <div
-        ref={scrollRef}
-        className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-4 py-6 sm:px-6"
-      >
+      {/* Studio Toolbar with Canvas Toggle */}
+      <div className="flex shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/75 px-4 py-2 backdrop-blur-md dark:border-slate-800/70 dark:bg-slate-900/75 sm:px-6">
+        <div className="flex items-center gap-2">
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-primary-950/60">
+            <Stethoscope className="h-3.5 w-3.5" />
+          </div>
+          <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+            {messages.length > 0 ? (headerTitle ?? DEFAULT_HEADER_TITLE) : "Socratic Studio"}
+          </span>
+          {activeClinicalRecord && (
+            <span className="hidden items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 sm:inline-flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Live Case
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setCanvasOpen((v) => !v)}
+            aria-label={canvasOpen ? "Thu gọn Clinical Canvas" : "Mở Clinical Studio Canvas"}
+            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-primary/50 hover:bg-primary/5 hover:text-primary dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-primary-400"
+          >
+            <LayoutDashboard className="h-3.5 w-3.5 text-primary" />
+            <span className="hidden sm:inline">{canvasOpen ? "Thu gọn Studio" : "Clinical Studio Canvas"}</span>
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
+          </button>
+        </div>
+      </div>
+
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        {/* Left Pane: Chat Stream & Floating Dock */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div
+            ref={scrollRef}
+            className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin px-4 py-6 sm:px-6"
+          >
         {historyError && (
           <div
             role="alert"
@@ -639,10 +677,10 @@ export function ChatInterface({
         )}
         {messages.length === 0 && !isThinking && (
           <div className="mx-auto flex max-w-md flex-col items-center justify-center py-12 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/15 to-primary/5 text-primary shadow-sm shadow-primary/10">
               <Stethoscope className="h-8 w-8" />
             </div>
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+            <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
               {headerTitle ?? DEFAULT_HEADER_TITLE}
             </h2>
             {headerSubtitle && (
@@ -662,7 +700,7 @@ export function ChatInterface({
                       key={suggestion}
                       type="button"
                       onClick={() => void handleSend(suggestion)}
-                      className="min-h-[44px] rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-left text-sm text-slate-700 transition hover:border-primary hover:bg-primary/5 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      className="min-h-[44px] rounded-xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-left text-sm text-slate-700 shadow-sm backdrop-blur-sm transition-all hover:border-primary/60 hover:bg-primary/5 hover:text-primary-700 hover:shadow-md dark:border-slate-700/80 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:border-primary-400 dark:hover:bg-primary-950/20"
                     >
                       {suggestion}
                     </button>
@@ -691,18 +729,20 @@ export function ChatInterface({
           <MessageBubble key={message.id} message={message} />
         ))}
 
-        {isThinking && <ThinkingIndicator />}
+        {isThinking && <ThinkingIndicator mode={mode} />}
       </div>
 
-      <div className="border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900 sm:px-6">
+      {/* Floating Studio Dock */}
+      <div className="border-t border-slate-200/60 bg-gradient-to-t from-slate-100/90 via-white/90 to-transparent px-4 pb-4 pt-2 backdrop-blur-md dark:border-slate-800/60 dark:from-slate-950/90 dark:via-slate-900/90 sm:px-6">
         {(!freshSession || sessionId !== null) && (
           <div className="mx-auto mb-2 flex max-w-3xl justify-end">
             <button
               type="button"
               onClick={handleNewConversation}
               aria-label="Bắt đầu cuộc trò chuyện mới"
-              className="inline-flex min-h-[44px] items-center px-2 text-xs font-medium text-primary transition hover:text-primary-700"
+              className="inline-flex min-h-[44px] items-center rounded-xl px-2.5 text-xs font-semibold text-primary transition hover:bg-primary/5 hover:text-primary-700 dark:text-primary-400"
             >
+              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
               Bắt đầu cuộc trò chuyện mới
             </button>
           </div>
@@ -710,7 +750,7 @@ export function ChatInterface({
 
         {/* Active clinical record badge */}
         {activeClinicalRecord && !activeClinicalRecord.closedAt && (
-          <div className="mx-auto mb-2 max-w-3xl">
+          <div className="mx-auto mb-2.5 max-w-3xl">
             <ClinicalRecordBadge
               record={activeClinicalRecord}
               onEdit={handleBadgeEdit}
@@ -718,18 +758,25 @@ export function ChatInterface({
           </div>
         )}
 
-        <div className="mx-auto max-w-3xl">
-          <div className="mb-2 flex items-center justify-between">
+        {/* Studio Dock Island */}
+        <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200/90 bg-white/95 p-2.5 shadow-xl shadow-slate-900/5 backdrop-blur-xl transition focus-within:border-primary/50 focus-within:ring-4 focus-within:ring-primary/10 dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-black/20 dark:focus-within:border-primary-400/50">
+          <div className="mb-2 flex items-center justify-between px-1">
             <ChatModeToggle
               value={mode}
               onChange={setMode}
               disabled={isThinking}
             />
+            <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+              <span className="flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                /
+              </span>
+              <span>menu lệnh lâm sàng</span>
+            </div>
           </div>
           <div className="relative flex items-end gap-2">
             {/* Slash command menu — positioned above the input row */}
             {slashMenuOpen && (
-              <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-50 w-[min(22rem,calc(100vw-2rem))]">
+              <div className="absolute bottom-[calc(100%+0.75rem)] left-0 z-50 w-[min(22rem,calc(100vw-2rem))]">
                 <SlashCommandMenu
                   query={slashQuery}
                   onSelect={handleSlashCommand}
@@ -767,7 +814,7 @@ export function ChatInterface({
               onKeyDown={handleKeyDown}
               rows={1}
               placeholder="Nhập câu hỏi nha khoa của bạn..."
-              className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200/80 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 dark:border-slate-700/80 dark:bg-slate-800/50 dark:text-slate-100 dark:focus:bg-slate-800"
               aria-label="Ô nhập câu hỏi"
             />
             <button
@@ -775,16 +822,59 @@ export function ChatInterface({
               onClick={() => void handleSend(input)}
               disabled={!input.trim() || isThinking || !userId}
               aria-label="Gửi câu hỏi"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-white transition hover:bg-primary-700 disabled:opacity-50"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-primary to-primary-600 text-white shadow-md shadow-primary/25 transition hover:shadow-lg hover:shadow-primary/30 active:scale-95 disabled:scale-100 disabled:opacity-50 disabled:shadow-none"
             >
               <Send className="h-5 w-5" />
             </button>
           </div>
         </div>
-        <p className="mx-auto mt-1.5 max-w-3xl text-center text-[11px] text-slate-400 dark:text-slate-500">
+        <p className="mx-auto mt-2 max-w-3xl text-center text-[11px] text-slate-400 dark:text-slate-500">
           Nhấn Enter để gửi · Shift + Enter để xuống dòng
         </p>
       </div>
     </div>
+
+    {/* Right Pane: Clinical Studio Canvas (Desktop Split-Screen) */}
+    {canvasOpen && (
+      <div className="hidden w-[22rem] shrink-0 border-l border-slate-200/80 bg-slate-50/50 dark:border-slate-800/80 dark:bg-slate-900/50 lg:block xl:w-[26rem] 2xl:w-[28rem]">
+        <ClinicalStudioCanvas
+          activeRecord={activeClinicalRecord}
+          onEditRecord={handleBadgeEdit}
+          onNewRecord={() => {
+            setEditingRecordId(null);
+            setPendingReplacementRecordId(null);
+            setWizardSchemaId("co-dinh");
+            setWizardOpen(true);
+          }}
+          onAskQuestion={(prompt) => {
+            void handleSend(prompt);
+          }}
+          onClose={() => setCanvasOpen(false)}
+        />
+      </div>
+    )}
+
+    {/* Mobile / Tablet Drawer Overlay */}
+    {canvasOpen && (
+      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white shadow-2xl dark:bg-slate-900 lg:hidden">
+        <ClinicalStudioCanvas
+          activeRecord={activeClinicalRecord}
+          onEditRecord={handleBadgeEdit}
+          onNewRecord={() => {
+            setEditingRecordId(null);
+            setPendingReplacementRecordId(null);
+            setWizardSchemaId("co-dinh");
+            setWizardOpen(true);
+          }}
+          onAskQuestion={(prompt) => {
+            void handleSend(prompt);
+            setCanvasOpen(false);
+          }}
+          onClose={() => setCanvasOpen(false)}
+        />
+      </div>
+    )}
+  </div>
+</div>
   );
 }

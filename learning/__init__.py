@@ -25,10 +25,14 @@ from .models import (
     LearningDatabase,
     UserProgress,
 )
+from .quiz_store import QuizHistoryMapping, QuizStore, QuizStoreMapping
 
 __all__ = [
     # Database + models
     "LearningDatabase",
+    "QuizStore",
+    "QuizStoreMapping",
+    "QuizHistoryMapping",
     "Feedback",
     "UserProgress",
     "KnowledgeUpdate",
