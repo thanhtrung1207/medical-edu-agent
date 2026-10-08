@@ -27,6 +27,8 @@ __all__ = [
     "extract_json",
     "format_history_snippet",
     "format_retrieved_passages",
+    "clean_answer_markdown",
+    "is_relevant_search_result",
 ]
 
 logger = logging.getLogger(__name__)
@@ -255,3 +257,72 @@ def format_retrieved_passages(
         + "\n\n".join(passages)
         + f"\n{_EVIDENCE_FENCE_CLOSE}"
     )
+
+
+def clean_answer_markdown(text: str) -> str:
+    """Strip trailing raw URL lists, reference dumps, and web-search disclaimers from markdown.
+
+    This ensures responses look professional, aesthetic, and pedagogical, without raw URL
+    dumps or robotic search disclaimers. Citations are handled via structured UI badges.
+    """
+    if not text:
+        return ""
+    cleaned = str(text).strip()
+
+    # 1. Strip trailing web-search / data analytics disclaimers or notes
+    cleaned = re.sub(
+        r"(?:\n\s*)*"
+        r"(?:(?:Ghi chú|Lưu ý)\s*(?:quan trọng\s*)?(?:về|về các)?\s*nguồn\s*(?:tin|dữ liệu|tham khảo)?[:\s][^\n]*(?:\n(?!(?:#{1,3}\s|\d+\.\s))[^\n]+)*)"
+        r"\s*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    # 2. Strip trailing "Nguồn: [1] https://... [2] https://..." or multiline list of URLs
+    source_block = (
+        r"(?:\n\s*)*"
+        r"(?:(?:Ghi chú|Lưu ý)\s*(?:quan trọng\s*)?(?:về|về các)?\s*nguồn\s*(?:tin|dữ liệu|tham khảo)?[:\s][^\n]*(?:\n(?!(?:#{1,3}\s|\d+\.\s))[^\n]+)*\s*)*"
+        r"(?:Nguồn|Tài liệu tham khảo|Tham khảo|References|Sources)[:\s]*"
+        r"(?:(?:\s*\[\d+\]\s*https?://[^\s\n]+)+|"
+        r"(?:\n\s*(?:[-*•]|\d+\.|\(\d+\)|\[\d+\])?\s*(?:\[\d+\]\s*)?https?://[^\s\n]+)+|"
+        r"(?:\n\s*(?:[-*•]|\d+\.|\(\d+\)|\[\d+\])\s*\[?\d+\]?.*)+|"
+        r"(?:\s*\[\d+\].*)+)"
+        r"\s*$"
+    )
+    cleaned = re.sub(source_block, "", cleaned, flags=re.IGNORECASE).strip()
+
+    # 3. Strip any trailing raw URL list even without the "Nguồn:" label
+    cleaned = re.sub(
+        r"(?:\n\s*)*"
+        r"(?:\[\d+\]\s*https?://[^\s\n]+(?:\s+\[\d+\]\s*https?://[^\s\n]+)*)\s*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    return cleaned
+
+
+def is_relevant_search_result(item: dict) -> bool:
+    """Filter out non-medical/non-dental hits (e.g. business data analytics, accounting)."""
+    if not isinstance(item, dict):
+        return True
+    text = f"{item.get('title', '')} {item.get('snippet', '')} {item.get('url', '')}".lower()
+    business_markers = [
+        "quản trị doanh nghiệp", "kế toán", "chứng khoán", "kinh doanh",
+        "data analytics", "khoa học dữ liệu", "fpt shop", "bán hàng",
+        "marketing", "doanh nghiệp", "tài chính",
+    ]
+    medical_markers = [
+        "nha", "răng", "hàm", "mặt", "y học", "y tế", "lâm sàng", "bệnh",
+        "điều trị", "bác sĩ", "chấn thương", "men răng", "tủy", "nha chu",
+        "implant", "khôn", "oral", "dental", "dentist", "tooth", "teeth",
+        "medical", "clinic", "clinical", "patient", "ada", "iti", "guideline",
+    ]
+    has_business = any(m in text for m in business_markers)
+    has_medical = any(m in text for m in medical_markers)
+    if has_business and not has_medical:
+        return False
+    return True
+

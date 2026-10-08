@@ -271,3 +271,103 @@ async def test_chat_mode_sanitizes_unicode_controls_in_sources_citations_and_pro
     assert "Nha khoa" in state["retrieved_sources"][0]["title"]
     assert "Dòng một\nDòng hai\tchi tiết" in api_citation.quote
     assert "Nội dung Việt\n\tđược giữ" in state["retrieved_sources"][0]["content"]
+
+
+def test_clean_answer_markdown_strips_trailing_raw_urls_and_disclaimers():
+    from agents.workflow._runtime import clean_answer_markdown
+
+    # Case 1: Trailing URLs with Nguồn
+    text1 = (
+        "## Phân loại Ellis\n\nClass I: Gãy men [1].\n\n"
+        "Nguồn: [1] https://dentelts.com/learn [2] https://studocu.vn/medical"
+    )
+    cleaned1 = clean_answer_markdown(text1)
+    assert "Class I: Gãy men [1]." in cleaned1
+    assert "Nguồn:" not in cleaned1
+    assert "https://dentelts.com" not in cleaned1
+
+    # Case 2: Business disclaimer + trailing URLs
+    text2 = (
+        "## Phân tích chẩn đoán răng 38\n\nRăng 38 lung lay cần nhổ [1].\n\n"
+        "Ghi chú về nguồn tin: Các nguồn [1]-[5] chỉ giải thích khái niệm phân tích chẩn đoán trong bối cảnh dữ liệu kinh doanh/kỹ thuật. Không có nguồn nào trong kết quả search cung cấp bằng chứng lâm sàng nha khoa cụ thể cho trường hợp này. Chúc bạn hoàn thành tốt bài tập!\n\n"
+        "Nguồn: [1] https://www.mcivietnam.com/blog [2] https://fptshop.com.vn/tin-tuc"
+    )
+    cleaned2 = clean_answer_markdown(text2)
+    assert "Răng 38 lung lay cần nhổ [1]." in cleaned2
+    assert "Ghi chú về nguồn tin" not in cleaned2
+    assert "Nguồn:" not in cleaned2
+    assert "mcivietnam" not in cleaned2
+
+
+def test_is_relevant_search_result_filters_business_analytics():
+    from agents.workflow._runtime import is_relevant_search_result
+
+    business_hit = {
+        "title": "Phân tích chẩn đoán trong quản trị doanh nghiệp",
+        "snippet": "Data analytics giúp kế toán và kinh doanh đưa ra quyết định.",
+        "url": "https://mci.vn/analytics",
+    }
+    assert not is_relevant_search_result(business_hit)
+
+    dental_hit = {
+        "title": "Phân loại gãy răng theo Ellis - Nha khoa lâm sàng",
+        "snippet": "Chấn thương răng bao gồm gãy men, gãy ngà và lộ tủy.",
+        "url": "https://nhakhoa.vn/ellis",
+    }
+    assert is_relevant_search_result(dental_hit)
+
+    neutral_hit = {
+        "title": "Tài liệu y khoa tổng quát",
+        "snippet": "Thông tin về chẩn đoán lâm sàng của bệnh nhân.",
+        "url": "https://yhoc.vn/doc",
+    }
+    assert is_relevant_search_result(neutral_hit)
+
+
+@pytest.mark.asyncio
+async def test_chat_mode_enriches_generic_command_with_clinical_context(monkeypatch):
+    searched_queries = []
+
+    def mock_search(query, max_results=5):
+        searched_queries.append(query)
+        return SAMPLE_RESULTS
+
+    monkeypatch.setattr("agents.workflow.chat_mode.tavily_search", mock_search)
+
+    async def fake_llm(prompt: str) -> str:
+        return "Trả lời lâm sàng [1]."
+
+    runner = ChatModeRunner(llm=fake_llm)
+    context = {
+        "clinical_context": "23 tuổi, Răng 38 lung lay đau",
+        "command": "chan-doan",
+    }
+    await runner.run("Phân tích chẩn đoán", context=context)
+
+    assert len(searched_queries) == 1
+    query = searched_queries[0]
+    assert "nha khoa" in query
+    assert "Răng 38" in query
+
+
+@pytest.mark.asyncio
+async def test_chat_mode_strips_trailing_url_dump_from_final_answer(monkeypatch):
+    monkeypatch.setattr(
+        "agents.workflow.chat_mode.tavily_search",
+        lambda query, max_results=5: SAMPLE_RESULTS,
+    )
+
+    async def fake_llm(prompt: str) -> str:
+        return (
+            "## Phân loại gãy răng Ellis\n\n"
+            "Class I đến IX theo chuẩn [1].\n\n"
+            "Nguồn: [1] https://ada.org/x [2] https://moh.gov.vn/y"
+        )
+
+    runner = ChatModeRunner(llm=fake_llm)
+    state = await runner.run("Phân loại Ellis", context={})
+
+    assert "Class I đến IX theo chuẩn [1]." in state["verified_answer"]
+    assert "https://ada.org/x" not in state["verified_answer"]
+    assert "Nguồn:" not in state["verified_answer"]
+

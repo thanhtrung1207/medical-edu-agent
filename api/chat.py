@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from agents.guardrails.models import DISCLAIMER_VI
+from agents.workflow._runtime import clean_answer_markdown
 from core.tracing import get_current_trace_id, set_trace_context, trace_span
 from memory.learning_memory import extract_explicit_learning_facts
 
@@ -163,7 +164,7 @@ async def _run_chat(
             "confidence_score": 0.0,
             "warnings": [f"RunnerError: {type(exc).__name__}"],
         }
-    answer = (
+    answer = clean_answer_markdown(
         state.get("verified_answer")
         or state.get("formatted_answer")
         or ""

@@ -2,6 +2,7 @@
 
 import { memo, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   AlertTriangle,
   BookOpen,
@@ -64,6 +65,7 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
         ) : (
           <div className="markdown-body text-sm leading-relaxed">
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
                 h1: ({ children }) => (
                   <h1 className="mb-2 mt-3 border-b border-slate-100 pb-1 text-base font-bold text-slate-900 dark:border-slate-800 dark:text-slate-100">

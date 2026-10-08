@@ -16,7 +16,11 @@ import os
 import unicodedata
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from agents.workflow._runtime import format_history_snippet
+from agents.workflow._runtime import (
+    clean_answer_markdown,
+    format_history_snippet,
+    is_relevant_search_result,
+)
 from agents.workflow.command_hints import (
     build_clinical_context_block,
     build_command_block,
@@ -54,8 +58,10 @@ TOOL CÓ SẴN:
 
 QUY TẮC VÒNG LẶP SUY LUẬN (ReAct Looping):
 - Với câu hỏi chuyên môn/lâm sàng: BẮT BUỘC thực hiện tra cứu (rag_search hoặc web_search) để đối chiếu y văn trước khi đưa ra final_answer. Không vội vàng kết thúc ở bước đầu tiên khi chưa có cơ sở tra cứu.
+- Khi tra cứu (rag_search, web_search): Phải trích xuất THỰC THỂ LÂM SÀNG CỤ THỂ (ví dụ tên răng, triệu chứng, bệnh lý: "đau răng khôn 38 lung lay", "Ellis fracture"). TUYỆT ĐỐI KHÔNG tìm kiếm cụm từ lệnh chung chung như "Phân tích chẩn đoán" hay "Kế hoạch điều trị".
 - Dùng rag_search cho kiến thức giáo khoa (textbook, guideline nội bộ, ITI/ADA).
 - Nếu web_search có sẵn, dùng cho thông tin cập nhật (recall, guideline mới).
+- Nếu kết quả tìm kiếm không liên quan đến nha khoa/y học (ví dụ quản trị doanh nghiệp, kế toán, data analytics): BỎ QUA HOÀN TOÀN, không trích dẫn và không phân tích về các lĩnh vực ngoài ngành này.
 - Dùng read_url khi một URL đáng tin cậy cần đọc kỹ hơn snippet.
 - Dùng search_anatomy khi cần cấu trúc giải phẫu răng hàm mặt (liên quan thần kinh, xoang, mạch máu).
 - Dùng drug_lookup khi cần tra cứu dược lý (thuốc tê, kháng sinh, NSAIDs, liều tối đa, tương tác).
@@ -71,6 +77,9 @@ QUY TẮC SƯ PHẠM SOCRATIC (BẮT BUỘC TRONG FINAL_ANSWER):
   * Sử dụng thông tin tra cứu từ RAG/Web làm cơ sở lý luận nội bộ để đặt câu hỏi dẫn dắt chính xác.
   * Khuyến khích sinh viên tự lập luận, tạo thành vòng lặp đối thoại nhiều lượt (multi-turn Socratic loop).
   * Luôn nhắc nhở nội dung chỉ phục vụ học tập, giữ nguyên thuật ngữ y khoa Latin/English.
+- ĐỊNH DẠNG TRÌNH BÀY:
+  * Trình bày bằng Markdown có cấu trúc chuẩn mực: tiêu đề phân cấp rõ ràng, bảng Markdown (table) cho các bảng phân loại/chỉ số, gạch đầu dòng súc tích.
+  * Tuyệt đối KHÔNG liệt kê thô URL hoặc dòng "Nguồn: [1] https://..." ở cuối bài (hệ thống sẽ tự động hiển thị danh sách nguồn trích dẫn qua giao diện).
 """
 
 _TOOL_DESC_RAG = "- rag_search(query): tìm tài liệu trong corpus nội bộ."
@@ -148,7 +157,10 @@ class ReActRunner:
                     try:
                         await on_step({
                             "type": "answer",
-                            "content": {"answer": final_answer, "citations": []},
+                            "content": {
+                                "answer": clean_answer_markdown(final_answer),
+                                "citations": [],
+                            },
                         })
                     except Exception:
                         logger.debug("on_step answer callback failed", exc_info=True)
@@ -197,11 +209,12 @@ class ReActRunner:
             with trace_span("react.force_synthesis"):
                 final_answer = await self._force_synthesis(message, trajectory)
 
+        cleaned_final_answer = clean_answer_markdown(final_answer or "")
         state: Dict[str, Any] = {
             "user_input": message,
             "context": context,
-            "formatted_answer": final_answer,
-            "verified_answer": final_answer,
+            "formatted_answer": cleaned_final_answer,
+            "verified_answer": cleaned_final_answer,
             "reasoning_steps": reasoning_steps,
             "retrieved_sources": retrieved_sources,
             "citations": [s.get("source") or s.get("title") or "" for s in retrieved_sources],
@@ -280,13 +293,17 @@ class ReActRunner:
                 warning = "web_search tạm thời không khả dụng."
                 warnings.append(warning)
                 return warning, []
+            relevant_hits = [h for h in hits if is_relevant_search_result(h)]
+            if hits and not relevant_hits:
+                return "Web search không tìm thấy thông tin nha khoa/y học phù hợp (các kết quả ngoài ngành đã được loại bỏ).", []
+            use_hits = relevant_hits if relevant_hits else hits
             start = citation_counts["WEB"] + 1
             sources = [
                 _normalize_web_hit(hit, f"WEB{start + offset}")
-                for offset, hit in enumerate(hits)
+                for offset, hit in enumerate(use_hits)
             ]
             citation_counts["WEB"] += len(sources)
-            return _format_web_observation(hits, start), sources
+            return _format_web_observation(use_hits, start), sources
         if action == "read_url":
             if self._read_url is None:
                 return "read_url không khả dụng.", []
@@ -362,6 +379,11 @@ class ReActRunner:
             "bằng tiếng Việt theo vai trò giảng viên lâm sàng nha khoa (phương pháp Socratic: "
             "với ca lâm sàng, gợi mở bằng câu hỏi trọng tâm để sinh viên tự tư duy, không đưa sẵn phác đồ trọn gói), "
             "trích dẫn [RAG<n>] / [WEB<n>] nếu phù hợp.\n\n"
+            "NGUYÊN TẮC TRÌNH BÀY:\n"
+            "- Trình bày chuyên môn chuẩn mực, tự nhiên, sử dụng Markdown có cấu trúc (tiêu đề phân cấp, bảng phân loại nếu có, gạch đầu dòng súc tích).\n"
+            "- Tuyệt đối KHÔNG liệt kê thô URL hoặc dòng 'Nguồn: [1] https://...' ở cuối câu trả lời (giao diện sẽ tự động hiển thị).\n"
+            "- Tuyệt đối KHÔNG đề cập hay phân tích các lĩnh vực ngoài ngành y tế/nha khoa (như quản trị dữ liệu, kế toán).\n"
+            "- Kết thúc bằng 1 câu hỏi gợi mở tư duy lâm sàng.\n\n"
             f"CÂU HỎI: {message}\n\n"
             f"TRAJECTORY:\n{_render_trajectory_structure(trajectory)}\n\n"
             f"{_render_observations_section(trajectory)}"
